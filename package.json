@@ -13,7 +13,6 @@
     "@types/node": "^18.0.6",
     "axios": "^1.7.7",
     "https-proxy-agent": "^7.0.5",
-    "socks-proxy-agent": "^8.0.4",
-    "chalk": "^5.0.0"
+    "socks-proxy-agent": "^8.0.4"
   }
 }

