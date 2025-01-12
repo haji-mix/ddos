@@ -4,21 +4,15 @@ const path = require('path');
 const SCRIPT_FILE = "ddos.js";
 const SCRIPT_PATH = path.join(__dirname, SCRIPT_FILE);
 
-const MAX_MEMORY_THRESHOLD = 8000 * 1024 * 1024; // 8000 MB, threshold when to scale up memory
+// Set the memory limit to 100% of 8 GB (10,240 MB)
+const MAX_MEMORY_THRESHOLD = 8 * 1024 * 1024 * 1024; 
 let mainProcess;
 
 function calculateMaxMemoryUsage() {
-    // Get the current heap usage
-    const currentHeapUsage = process.memoryUsage().heapUsed;
+    let newMemoryLimit = MAX_MEMORY_THRESHOLD;
 
-    // Determine new max heap size based on current usage (increase by 50% or default to a higher value)
-    let newMemoryLimit = currentHeapUsage * 1.5; // Increase memory by 50%
-
-    // Ensure it doesn't exceed a certain limit (e.g., 4 GB)
-    newMemoryLimit = Math.min(newMemoryLimit, MAX_MEMORY_THRESHOLD);
-
-    // Return the new calculated memory limit in MB
-    return newMemoryLimit / 1024 / 1024;
+    // Return memory in MB (convert bytes to MB)
+    return Math.floor(newMemoryLimit / 1024 / 1024);
 }
 
 function start() {
