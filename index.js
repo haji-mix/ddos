@@ -4,12 +4,28 @@ const path = require('path');
 const SCRIPT_FILE = "ddos.js";
 const SCRIPT_PATH = path.join(__dirname, SCRIPT_FILE);
 
-const MAX_MEMORY_USAGE = Number.MAX_SAFE_INTEGER || 2000 * 1024 * 1024; // 2000 MB
-
+const MAX_MEMORY_THRESHOLD = 8000 * 1024 * 1024; // 8000 MB, threshold when to scale up memory
 let mainProcess;
 
+function calculateMaxMemoryUsage() {
+    // Get the current heap usage
+    const currentHeapUsage = process.memoryUsage().heapUsed;
+
+    // Determine new max heap size based on current usage (increase by 50% or default to a higher value)
+    let newMemoryLimit = currentHeapUsage * 1.5; // Increase memory by 50%
+
+    // Ensure it doesn't exceed a certain limit (e.g., 4 GB)
+    newMemoryLimit = Math.min(newMemoryLimit, MAX_MEMORY_THRESHOLD);
+
+    // Return the new calculated memory limit in MB
+    return newMemoryLimit / 1024 / 1024;
+}
+
 function start() {
-    mainProcess = spawn("node", [SCRIPT_PATH], {
+    const memoryLimitMB = calculateMaxMemoryUsage();
+    console.log(`Allocating ${memoryLimitMB} MB of memory for the Node.js process`);
+
+    mainProcess = spawn("node", [`--max-old-space-size=${memoryLimitMB}`, SCRIPT_PATH], {
         cwd: __dirname,
         stdio: "inherit",
         shell: true
@@ -40,10 +56,8 @@ function start() {
     // Monitor memory usage
     const memoryCheckInterval = setInterval(() => {
         const memoryUsage = process.memoryUsage().heapUsed;
-        /*  console.log(`Current memory usage: ${(memoryUsage / 1024 / 1024).toFixed(2)} MB`);*/
-
-        if (memoryUsage > MAX_MEMORY_USAGE) {
-            console.error(`Memory usage exceeded ${MAX_MEMORY_USAGE / 1024 / 1024} MB. Restarting server...`);
+        if (memoryUsage > MAX_MEMORY_THRESHOLD) {
+            console.error(`Memory usage exceeded threshold. Restarting server...`);
 
             // Graceful shutdown procedure
             if (mainProcess && mainProcess.pid) {
