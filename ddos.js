@@ -2,8 +2,8 @@ const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
-const SocksProxyAgent = require("socks-proxy-agent");
-const HttpsProxyAgent = require("https-proxy-agent");
+const { SocksProxyAgent } = require("socks-proxy-agent");
+const { HttpsProxyAgent } = require("https-proxy-agent");
 const { rainbow } = require("gradient-string");
 const { fakeState } = require("./fakeState.js");
 
@@ -12,11 +12,18 @@ app.use(express.json());
 
 const stateFilePath = path.join(__dirname, 'attackState.json');
 
+const ensureStateFileExists = () => {
+    if (!fs.existsSync(stateFilePath)) {
+        fs.writeFileSync(stateFilePath, JSON.stringify({ continueAttack: false, requestsSent: 0, targetUrl: null }));
+    }
+};
+
 const saveState = (state) => {
     fs.writeFileSync(stateFilePath, JSON.stringify(state));
 };
 
 const loadState = () => {
+    ensureStateFileExists();
     try {
         const data = fs.readFileSync(stateFilePath, 'utf-8');
         return JSON.parse(data);
