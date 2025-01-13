@@ -4,6 +4,8 @@ const path = require('path');
 const SCRIPT_FILE = "ddos.js";
 const SCRIPT_PATH = path.join(__dirname, SCRIPT_FILE);
 
+// @kennethpanio
+
 // Set the memory limit to 100% of 8 GB (10,240 MB)
 const MAX_MEMORY_THRESHOLD = 8 * 1024 * 1024 * 1024; 
 let mainProcess;
@@ -32,16 +34,16 @@ function start() {
     mainProcess.on("close", (exitCode) => {
         if (exitCode === 0) {
             console.log(`STATUS: [${exitCode}] - Process Exited > SYSTEM Rebooting!...`);
-            start();
+            restartProcess();
         } else if (exitCode === 1) {
             console.log(`ERROR: [${exitCode}] - System Rebooting!...`);
-            start();
+            restartProcess();
         } else if (exitCode === 137) {
             console.log(`POTENTIAL DDOS: [${exitCode}] - Out Of Memory Restarting...`);
-            start();
+            restartProcess();
         } else if (exitCode === 134) {
             console.log(`REACHED HEAP LIMIT ALLOCATION: [${exitCode}] - Out Of Memory Restarting...`);
-            start();
+            restartProcess();
         } else {
             console.error(`[${exitCode}] - Process Exited!`);
         }
@@ -53,14 +55,23 @@ function start() {
         if (memoryUsage > MAX_MEMORY_THRESHOLD) {
             console.error(`Memory usage exceeded threshold. Restarting server...`);
 
-            // No graceful shutdown, just restart
+            // Kill process and restart if memory usage is exceeded
             if (mainProcess && mainProcess.pid) {
                 mainProcess.kill('SIGKILL');
                 clearInterval(memoryCheckInterval);
-                start(); // Restart process
+                restartProcess(); // Restart process after killing it
             }
         }
     }, 5000);
+}
+
+function restartProcess() {
+    // Ensure process is killed before restart
+    if (mainProcess && mainProcess.pid) {
+        mainProcess.kill('SIGKILL');
+        console.log('Main process killed. Restarting...');
+    }
+    start();
 }
 
 start();
