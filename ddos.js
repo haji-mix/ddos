@@ -263,7 +263,7 @@ app.get("/stresser", (req, res) => {
     res.json({ message: "Starting DDOS ATTACK..." });
 });
 
-const port = process.env.PORT || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
+const port = Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
 app.listen(port, () => {
     console.log(rainbow(`API running on http://localhost:${port}`));
     if (continueAttack) {
