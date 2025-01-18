@@ -230,7 +230,6 @@ const startAttack = (url) => {
     targetUrl = url;
 
     const attackTimeout = setTimeout(() => {
-        continueAttack = false;
     }, (maxRequests / requestsPerSecond) * 1000);
 
     const checkCompletion = (sentRequests) => {
