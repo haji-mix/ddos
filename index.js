@@ -5,7 +5,7 @@ const { execSync } = require("child_process");
 const SCRIPT_FILE = "ddos.js";
 const SCRIPT_PATH = path.join(__dirname, SCRIPT_FILE);
 
-const npmPackages = [];
+const npmPackages = ["axios@latest"];
 
 const restartEnabled = process.env.PID !== "0";
 
