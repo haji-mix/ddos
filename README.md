@@ -14,8 +14,8 @@ This project is a Botnet Rest API built using Express.js, designed for stress te
 
 1. Clone the repository:
     ```sh
-    git clone <repository_url>
-    cd <repository_directory>
+    git clone https://github.com/haji-mix/ddos
+    cd ddos
     ```
 
 2. Install dependencies:
