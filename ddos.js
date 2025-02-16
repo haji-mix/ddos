@@ -172,7 +172,10 @@ const performAttack = (url, agent, continueAttack) => {
         setTimeout(() => performAttack(url, agent, continueAttack), 0);
     })
     .catch((err) => {
-        if (err.response?.status === 404) return;
+        if (err.response?.status === 404) {
+        continueAttack = false;
+        return;
+        }
         setTimeout(() => performAttack(url, agent, continueAttack), 0);
     });
 
@@ -184,7 +187,10 @@ const performAttack = (url, agent, continueAttack) => {
         setTimeout(() => performAttack(url, agent, continueAttack), 0);
     })
     .catch((err) => {
-        if (err.response?.status === 404) return;
+        if (err.response?.status === 404) {
+        continueAttack = false;
+        return;
+        }
         setTimeout(() => performAttack(url, agent, continueAttack), 0);
     });
 
