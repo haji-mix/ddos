@@ -15,9 +15,9 @@ const proxyFilePath = path.join(__dirname, "proxy.txt");
 const ualist = path.join(__dirname, "ua.txt");
 
 // Configuration
-const maxRequests = 1000000; // Maximum total requests per attack
-const requestsPerSecond = 100; // Maximum requests per second
-const numThreads = 100; // Number of concurrent threads
+const maxRequests = Number.MAX_SAFE_INTEGER;
+const requestsPerSecond = 10000000;
+const numThreads = 1000;
 
 // Rate limiter state
 let requestCount = 0;
