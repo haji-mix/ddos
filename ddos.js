@@ -186,7 +186,7 @@ const performAttack = async (url, agent, threadId) => {
         const results = await Promise.allSettled(requests.map(request => request.catch(err => {
             // Log specific errors for debugging
             if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
-                console.log(rainbow(`Thread ${threadId}: Network error: ${err.code || err.message} (Possible proxy issue)`));
+         //       console.log(rainbow(`Thread ${threadId}: Network error: ${err.code || err.message} (Possible proxy issue)`));
             } else if (err.response?.status === 404) {
                 console.log(rainbow(`Thread ${threadId}: Target returned 404 (Not Found).`));
             } else if (err.response?.status === 503) {
@@ -198,7 +198,7 @@ const performAttack = async (url, agent, threadId) => {
             } else if (err.response?.status) {
                 console.log(rainbow(`Thread ${threadId}: HTTP Status: ${err.response.status}`));
             } else {
-                console.log(rainbow(`Thread ${threadId}: Request failed: ${err.message || "Unknown error"}`));
+                console.log(rainbow(`Thread ${threadId}: Ako Importante Putah!: ${err.message || "Unknown error"}`));
             }
             return null; // Return null for failed requests
         })));
