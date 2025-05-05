@@ -178,7 +178,7 @@ const startAttack = async (url, durationHours) => {
     setTimeout(() => {
         attackState.continueAttack = false;
         console.log(rainbow("Attack duration completed."));
-        // Optionally delete state file to prevent accidental resumption
+        // Delete state file to prevent accidental resumption
         fs.unlink(stateFilePath).catch(() => {});
     }, attackState.duration);
 
@@ -203,7 +203,7 @@ app.get("/stresser", async (req, res) => {
     if (!url || !/^https?:\/\//.test(url)) {
         return res.status(400).json({ error: "Invalid URL." });
     }
-    if (isNaN(durationHours) || durationHours adduct: <= 0) {
+    if (isNaN(durationHours) || durationHours <= 0) {
         return res.status(400).json({ error: "Invalid duration." });
     }
 
