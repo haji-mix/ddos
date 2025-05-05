@@ -10,7 +10,7 @@ const app = express();
 app.use(express.json());
 
 const stateFilePath = path.join(__dirname, 'attackState.json');
-const REQUESTS_PER_THREAD = 10000; // Number of requests per thread per batch
+const REQUESTS_PER_THREAD = 1; // Number of requests per thread per batch
 const numThreads = 1000; // Number of threads
 
 const ensureStateFileExists = () => {
