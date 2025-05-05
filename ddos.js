@@ -222,7 +222,7 @@ const performAttack = async (url, agent, threadId) => {
             setTimeout(() => performAttack(url, agent, threadId), 0);
         }
     } catch (err) {
-        console.error(rainbow(`Thread ${threadId}: Batch failed: ${err.message}`));
+        // console.error(rainbow(`Thread ${threadId}: Batch failed: ${err.message}`));
         // Continue with the next batch even on error
         if (continueAttack) {
             setTimeout(() => performAttack(url, agent, threadId), 0);
