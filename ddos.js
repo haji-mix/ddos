@@ -137,7 +137,7 @@ app.get("/stresser", async (req, res) => {
   startAttack(url, parseFloat(duration));
 });
 
-const port = process.env.PORT || Math.floor(Math.random() * (65535 - 1024)) + 1024;
+const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024)) + 1024;
 app.listen(port, () => {
   console.log(rainbow(`API running on http://localhost:${port}`));
   if (continueAttack && startTime && duration) {
