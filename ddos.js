@@ -329,9 +329,6 @@ app.get("/stresser", async (req, res) => {
        await res.json({ message: "Starting DDOS ATTACK..." });
         
        startAttack(url, durationHours);
-    } else {
-        res.status(500).json({ error: "Failed to start attack. Check server logs for details." });
-    }
 });
 
 const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
