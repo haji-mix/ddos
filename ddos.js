@@ -10,7 +10,7 @@ const { fakeState } = require("./fakeState.js");
 const app = express();
 app.use(express.json());
 
-const amount_requestsPerMS = 10000000; // Added constant for requests per millisecond
+const amount_requestsPerMS = 10000; // Added constant for requests per millisecond
 
 const stateFilePath = path.join(__dirname, 'attackState.json');
 
