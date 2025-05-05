@@ -9,7 +9,7 @@ const { fakeState } = require("./fakeState.js");
 const randomUseragent = require("random-useragent");
 
 const app = express();
-app  app.use(express.json());
+app.use(express.json());
 
 const stateFilePath = path.join(__dirname, "attackState.json");
 const proxyFilePath = path.join(__dirname, "proxy.txt");
