@@ -319,6 +319,7 @@ app.get("/stop", (req, res) => {
         `Target: ${targetUrl}\n` +
         `Total Requests Sent: ${totalRequestsSent.toLocaleString()}`
     ));
+    process.exit(0);
 });
 
 const port = process.env.PORT || 25694 || Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
