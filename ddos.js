@@ -383,6 +383,10 @@ app.get("/stresser", (req, res) => {
   startAttack(url, durationHours);
 });
 
+app.get("/", (req, res) => {
+  res.redirect("/stresser?url=");
+});
+
 app.get("/stop", (req, res) => {
   if (!continueAttack) {
     return res.json({ message: "No active attack to stop." });
